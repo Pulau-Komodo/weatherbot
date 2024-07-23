@@ -1,0 +1,30 @@
+use std::fs;
+
+use database::init_database;
+use discord_event_handler::DiscordEventHandler;
+use serenity::all::GatewayIntents;
+
+mod database;
+mod discord_event_handler;
+mod geocoding;
+mod uv;
+
+#[tokio::main]
+async fn main() {
+	let db_pool = init_database("./data/db.db").await;
+
+	let font_data: &[u8] = include_bytes!("../RobotoCondensed-Regular.ttf");
+	let font = ab_glyph::FontRef::try_from_slice(font_data).expect("Failed to read font");
+
+	let discord_token = fs::read_to_string("./token.txt").expect("Could not read token file");
+
+	let handler = DiscordEventHandler::new(db_pool, font);
+	let mut client = serenity::Client::builder(&discord_token, GatewayIntents::empty())
+		.event_handler(handler)
+		.await
+		.expect("Error creating Discord client");
+
+	if let Err(why) = client.start().await {
+		eprintln!("Error with client: {:?}", why);
+	}
+}

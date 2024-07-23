@@ -1,0 +1,30 @@
+[package]
+name = "weatherbot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+itertools = "0.13.0"
+sqlx = { version = "0.7.4", default-features = false, features = [
+	"macros",
+	"runtime-tokio",
+	"sqlite",
+	"chrono",
+	"migrate",
+] }
+serenity = { version = "0.12.2", default-features = false, features = [
+	"builder",
+	"cache",
+	"collector",
+	"client",
+	"gateway",
+	"model",
+	"rustls_backend",
+	"chrono",
+] }
+tokio = { version = "1.38.1", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.11.18", features = ["json"] }
+serde = "1.0.175"
+graph = { git = "https://github.com/Pulau-Komodo/graph.git", rev = "23275d7" }
+chrono = { version = "0.4.38", features = ["serde"] }
+ab_glyph = "0.2.28"
