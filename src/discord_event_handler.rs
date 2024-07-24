@@ -30,7 +30,7 @@ impl EventHandler for DiscordEventHandler {
 		if let Interaction::Command(interaction) = interaction {
 			let result = match interaction.data.name.as_str() {
 				"find_coordinates" => handle_find_coordinates(&context, &interaction).await,
-				"uvi" => handle_uvi(&context, &interaction, &self.font).await,
+				"uvi" => handle_uvi(&context, &interaction, &self.database, &self.font).await,
 				"set_location" => handle_set_location(&context, &interaction, &self.database).await,
 				"unset_location" => {
 					handle_unset_location(&context, &interaction, &self.database).await

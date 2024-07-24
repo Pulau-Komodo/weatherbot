@@ -9,8 +9,9 @@ use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateAttachment, CreateCommand,
 	CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
 };
+use sqlx::{Pool, Sqlite};
 
-use crate::error::Error;
+use crate::{error::Error, geocoding::GeocodingResult, user_locations::Location};
 
 #[derive(Debug, Deserialize)]
 struct HourlyUvi {
@@ -46,21 +47,30 @@ impl UviResult {
 pub async fn handle_uvi(
 	context: &Context,
 	interaction: &CommandInteraction,
+	database: &Pool<Sqlite>,
 	font: &FontRef<'static>,
 ) -> Result<(), Error> {
-	let Some(input) = interaction
+	let client = Client::new();
+	let location = match interaction
 		.data
 		.options
 		.first()
 		.and_then(|option| option.value.as_str())
-	else {
-		return Err(Error::friendly("No argument"));
+	{
+		Some(arg) => Location::from_geocoding_result(GeocodingResult::get(arg, &client).await?),
+		None => Location::get_for_user(
+			database,
+			interaction.user.id,
+			interaction
+				.guild_id
+				.ok_or_else(|| Error::custom("Somehow could not get guild ID"))?,
+		)
+		.await?
+		.ok_or_else(|| Error::friendly("No location set, and no location provided"))?,
 	};
-	let (latitude, longitude) = input.split_once(' ').ok_or(Error::friendly("Huh"))?;
-	let latitude = latitude.parse()?;
-	let longitude = longitude.parse()?;
-	let client = Client::new();
-	let result = UviResult::get(latitude, longitude, &client).await?;
+
+	let result = UviResult::get(location.latitude(), location.longitude(), &client).await?;
+
 	let image = graph::modules::hourly_uvi::create(
 		font,
 		(0..result.hourly.uv_index.len())
@@ -106,6 +116,6 @@ pub fn create_uvi() -> CreateCommand {
 				"place",
 				"The place to get the UVI forecast of.",
 			)
-			.required(true),
+			.required(false),
 		)
 }

@@ -115,7 +115,7 @@ pub async fn handle_set_location(
 		.options
 		.first()
 		.and_then(|arg| arg.value.as_str())
-		.ok_or_else(|| Error::custom("Missing_argument"))?;
+		.ok_or_else(|| Error::custom("Missing argument"))?;
 	let client = Client::new();
 	let geocoding = GeocodingResult::get(location_arg, &client).await?;
 	let location = Location::from_geocoding_result(geocoding);
