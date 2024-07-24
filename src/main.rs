@@ -6,7 +6,10 @@ use serenity::all::GatewayIntents;
 
 mod database;
 mod discord_event_handler;
+mod error;
 mod geocoding;
+mod reply_shortcuts;
+mod user_locations;
 mod uv;
 
 #[tokio::main]

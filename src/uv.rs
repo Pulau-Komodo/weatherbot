@@ -1,7 +1,7 @@
-use std::{error::Error, fmt::Write};
+use std::fmt::Write;
 
 use ab_glyph::FontRef;
-use chrono::{FixedOffset, TimeZone, Timelike};
+use chrono::{FixedOffset, Timelike};
 use graph::modules::make_png;
 use reqwest::Client;
 use serde::Deserialize;
@@ -9,6 +9,8 @@ use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateAttachment, CreateCommand,
 	CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
 };
+
+use crate::error::Error;
 
 #[derive(Debug, Deserialize)]
 struct HourlyUvi {
@@ -26,7 +28,7 @@ struct UviResult {
 }
 
 impl UviResult {
-	async fn get(latitude: f32, longitude: f32, client: &Client) -> Result<Self, Box<dyn Error>> {
+	async fn get(latitude: f32, longitude: f32, client: &Client) -> Result<Self, Error> {
 		Ok(client
 			.get("https://api.open-meteo.com/v1/forecast")
 			.query(&[("hourly", "uv_index")])
@@ -42,19 +44,19 @@ impl UviResult {
 }
 
 pub async fn handle_uvi(
-	context: Context,
-	interaction: CommandInteraction,
+	context: &Context,
+	interaction: &CommandInteraction,
 	font: &FontRef<'static>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Error> {
 	let Some(input) = interaction
 		.data
 		.options
 		.first()
 		.and_then(|option| option.value.as_str())
 	else {
-		return Err("No argument")?;
+		return Err(Error::friendly("No argument"));
 	};
-	let (latitude, longitude) = input.split_once(' ').ok_or("Huh")?;
+	let (latitude, longitude) = input.split_once(' ').ok_or(Error::friendly("Huh"))?;
 	let latitude = latitude.parse()?;
 	let longitude = longitude.parse()?;
 	let client = Client::new();

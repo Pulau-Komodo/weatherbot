@@ -1,11 +1,11 @@
-use std::error::Error;
-
 use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption,
 	CreateInteractionResponse, CreateInteractionResponseMessage,
 };
+
+use crate::error::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct GeocodingResultMinimal {
@@ -16,7 +16,7 @@ pub struct GeocodingResultMinimal {
 }
 
 impl GeocodingResultMinimal {
-	pub async fn get(place_name: &str, client: &Client) -> Result<Self, Box<dyn Error>> {
+	pub async fn get(place_name: &str, client: &Client) -> Result<Self, Error> {
 		let mut results: GeocodingResultsMinimal = client
 			.get("https://geocoding-api.open-meteo.com/v1/search")
 			.query(&[("count", 1)])
@@ -25,7 +25,10 @@ impl GeocodingResultMinimal {
 			.await?
 			.json()
 			.await?;
-		results.results.pop().ok_or("No geocoding results".into())
+		results
+			.results
+			.pop()
+			.ok_or(Error::friendly("No geocoding results"))
 	}
 }
 
@@ -44,7 +47,7 @@ pub struct GeocodingResult {
 }
 
 impl GeocodingResult {
-	pub async fn get(place_name: &str, client: &Client) -> Result<Self, Box<dyn Error>> {
+	pub async fn get(place_name: &str, client: &Client) -> Result<Self, Error> {
 		let mut results: GeocodingResults = client
 			.get("https://geocoding-api.open-meteo.com/v1/search")
 			.query(&[("count", "1"), ("format", "json"), ("name", place_name)])
@@ -52,7 +55,10 @@ impl GeocodingResult {
 			.await?
 			.json()
 			.await?;
-		results.results.pop().ok_or("No geocoding results".into())
+		results
+			.results
+			.pop()
+			.ok_or_else(|| Error::friendly("No geocoding results"))
 	}
 }
 
@@ -69,16 +75,16 @@ struct GeocodingResultsMinimal {
 }
 
 pub async fn handle_find_coordinates(
-	context: Context,
-	interaction: CommandInteraction,
-) -> Result<(), Box<dyn Error>> {
+	context: &Context,
+	interaction: &CommandInteraction,
+) -> Result<(), Error> {
 	let Some(place) = interaction
 		.data
 		.options
 		.first()
 		.and_then(|option| option.value.as_str())
 	else {
-		return Err("No argument")?;
+		return Err(Error::friendly("No argument"));
 	};
 	let client = Client::new();
 	let result = GeocodingResult::get(place, &client).await?;
