@@ -1,6 +1,6 @@
 use ab_glyph::FontRef;
 use chrono::{DateTime, FixedOffset, Timelike};
-use graph::util::make_png;
+use graph::util::{composite, make_png};
 use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
@@ -11,7 +11,6 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{
 	error::Error,
-	geocoding::GeocodingResult,
 	location::{Coordinates, Location},
 };
 
@@ -27,8 +26,10 @@ struct HourlyWeather {
 
 #[derive(Debug, Deserialize)]
 struct HourlyResult {
-	latitude: f32,
-	longitude: f32,
+	#[serde(rename = "latitude")]
+	_latitude: f32,
+	#[serde(rename = "longitude")]
+	_longitude: f32,
 	utc_offset_seconds: i32,
 	hourly: HourlyWeather,
 }
@@ -75,7 +76,7 @@ pub async fn handle_hourly(
 		.first()
 		.and_then(|option| option.value.as_str())
 	{
-		Some(arg) => Location::from_geocoding_result(GeocodingResult::get(arg, &client).await?),
+		Some(arg) => Location::try_from_arg(arg, &client).await?,
 		None => Location::get_for_user(
 			database,
 			interaction.user.id,
@@ -89,7 +90,7 @@ pub async fn handle_hourly(
 
 	let result = HourlyResult::get(location.coordinates(), &client).await?;
 
-	let image = graph::modules::hourly_uvi::create(
+	let uvi_image = graph::modules::hourly_uvi::create(
 		font,
 		(0..result.hourly.uv_index.len())
 			.map(|i| {
@@ -100,8 +101,7 @@ pub async fn handle_hourly(
 			})
 			.collect(),
 	);
-	let uvi_image = make_png(image);
-	let image = graph::modules::hourly_temp::create(
+	let temp_image = graph::modules::hourly_temp::create(
 		font,
 		(0..result.hourly.temperature_2m.len())
 			.map(|i| {
@@ -114,15 +114,15 @@ pub async fn handle_hourly(
 			})
 			.collect(),
 	);
-	let temp_image = make_png(image);
+	let composite = composite(&[temp_image, uvi_image]);
+	let image = make_png(composite);
 
 	interaction
 		.create_response(
 			context,
 			CreateInteractionResponse::Message(
 				CreateInteractionResponseMessage::new()
-					.add_file(CreateAttachment::bytes(uvi_image, "uvi.png"))
-					.add_file(CreateAttachment::bytes(temp_image, "temperature.png")),
+					.add_file(CreateAttachment::bytes(image, "hourly.png")),
 			),
 		)
 		.await?;

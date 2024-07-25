@@ -17,7 +17,6 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{
 	error::Error,
-	geocoding::GeocodingResult,
 	location::{Coordinates, Location},
 };
 
@@ -32,8 +31,10 @@ struct DailyWeather {
 
 #[derive(Debug, Deserialize)]
 struct DailyResult {
-	latitude: f32,
-	longitude: f32,
+	#[serde(rename = "latitude")]
+	_latitude: f32,
+	#[serde(rename = "longitude")]
+	_longitude: f32,
 	utc_offset_seconds: i32,
 	daily: DailyWeather,
 }
@@ -79,7 +80,7 @@ pub async fn handle_daily(
 		.first()
 		.and_then(|option| option.value.as_str())
 	{
-		Some(arg) => Location::from_geocoding_result(GeocodingResult::get(arg, &client).await?),
+		Some(arg) => Location::try_from_arg(arg, &client).await?,
 		None => Location::get_for_user(
 			database,
 			interaction.user.id,
