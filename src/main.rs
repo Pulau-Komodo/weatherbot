@@ -4,13 +4,15 @@ use database::init_database;
 use discord_event_handler::DiscordEventHandler;
 use serenity::all::GatewayIntents;
 
+mod daily_forecast;
 mod database;
 mod discord_event_handler;
 mod error;
 mod geocoding;
+mod hourly_forecast;
+mod location;
 mod reply_shortcuts;
 mod user_locations;
-mod uv;
 
 #[tokio::main]
 async fn main() {

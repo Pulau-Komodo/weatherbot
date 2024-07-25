@@ -6,11 +6,12 @@ use serenity::{
 use sqlx::{Pool, Sqlite};
 
 use crate::{
+	daily_forecast::{self, handle_daily},
 	error::Error,
 	geocoding::{self, handle_find_coordinates},
+	hourly_forecast::{self, handle_hourly},
 	reply_shortcuts::ReplyShortcuts,
 	user_locations::{self, handle_set_location, handle_unset_location},
-	uv::{self, handle_uvi},
 };
 
 pub struct DiscordEventHandler {
@@ -30,7 +31,8 @@ impl EventHandler for DiscordEventHandler {
 		if let Interaction::Command(interaction) = interaction {
 			let result = match interaction.data.name.as_str() {
 				"find_coordinates" => handle_find_coordinates(&context, &interaction).await,
-				"uvi" => handle_uvi(&context, &interaction, &self.database, &self.font).await,
+				"hourly" => handle_hourly(&context, &interaction, &self.database, &self.font).await,
+				"daily" => handle_daily(&context, &interaction, &self.database, &self.font).await,
 				"set_location" => handle_set_location(&context, &interaction, &self.database).await,
 				"unset_location" => {
 					handle_unset_location(&context, &interaction, &self.database).await
@@ -55,7 +57,8 @@ impl EventHandler for DiscordEventHandler {
 		if Some("register") == arg.as_deref() {
 			let commands = Vec::from([
 				geocoding::create_find_coordinates(),
-				uv::create_uvi(),
+				hourly_forecast::create_hourly(),
+				daily_forecast::create_daily(),
 				user_locations::create_set_location(),
 				user_locations::create_unset_location(),
 			]);
