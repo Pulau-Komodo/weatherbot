@@ -60,6 +60,7 @@ impl DailyResult {
 	}
 }
 
+/// Get the day of the month (from 1 to 31) for a given Unix timestamp, and a timezone offset in seconds.
 fn day_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 	DateTime::from_timestamp(timestamp, 0)
 		.unwrap()
@@ -86,7 +87,7 @@ pub async fn handle_daily(
 			interaction.user.id,
 			interaction
 				.guild_id
-				.ok_or_else(|| Error::custom("Somehow could not get guild ID"))?,
+				.ok_or_else(|| Error::custom_unfriendly("Somehow could not get guild ID"))?,
 		)
 		.await?
 		.ok_or_else(|| Error::friendly("No location set, and no location provided"))?,

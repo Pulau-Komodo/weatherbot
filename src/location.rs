@@ -8,44 +8,48 @@ use sqlx::{query, Pool, Sqlite};
 
 use crate::{error::Error, geocoding::GeocodingResult};
 
+/// Latitude or longitude.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GeoAxis {
 	Latitude,
 	Longitude,
 }
 
+/// North, south, east and west stored in a way convenient for processing input.
 struct Direction {
-	letter: char,
 	geoaxis: GeoAxis,
 	sign: f32,
 }
 
-const DIRECTIONS: [Direction; 4] = [
-	Direction {
-		letter: 'N',
-		geoaxis: GeoAxis::Latitude,
-		sign: 1.0,
-	},
-	Direction {
-		letter: 'S',
-		geoaxis: GeoAxis::Latitude,
-		sign: -1.0,
-	},
-	Direction {
-		letter: 'E',
-		geoaxis: GeoAxis::Longitude,
-		sign: 1.0,
-	},
-	Direction {
-		letter: 'W',
-		geoaxis: GeoAxis::Longitude,
-		sign: -1.0,
-	},
-];
+impl Direction {
+	fn get(char: char) -> Self {
+		match char {
+			'N' | 'n' => Self {
+				geoaxis: GeoAxis::Latitude,
+				sign: 1.0,
+			},
+			'S' | 's' => Self {
+				geoaxis: GeoAxis::Latitude,
+				sign: -1.0,
+			},
+			'E' | 'e' => Self {
+				geoaxis: GeoAxis::Longitude,
+				sign: 1.0,
+			},
+			'W' | 'w' => Self {
+				geoaxis: GeoAxis::Longitude,
+				sign: -1.0,
+			},
+			_ => unreachable!("Unexpected direction character"),
+		}
+	}
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Coordinates {
+	/// How far above the equator
 	pub latitude: f32,
+	/// How far east of the IERS Reference Meridian, which goes through Greenwich
 	pub longitude: f32,
 }
 
@@ -56,6 +60,13 @@ impl Coordinates {
 			longitude,
 		}
 	}
+	/// Attempt to parse a string describing coordinates.
+	///
+	/// It currently supports two formats:
+	///
+	/// Decimal: `52.87619043426636, -118.0795914761888` (Google Maps gives this on right click) (comma optional)
+	///
+	/// Degrees, minutes, seconds: `52° 52′ 34″ N, 118° 4′ 46″ W` (does not support decimals, spaces and comma optional, `′` and `″` can be `'` and `"` instead)
 	pub fn parse(input: &str) -> Option<Self> {
 		let simple_regex = LazyCell::new(|| {
 			Regex::new(
@@ -64,7 +75,7 @@ impl Coordinates {
 			.unwrap()
 		});
 		let fancier_regex = LazyCell::new(|| {
-			Regex::new(r#"(?i)^(\d{1,3})°(\d{1,2})[\u2032'](\d{1,2})[″"]\s*([NESW])\s*(\d{1,3})°(\d{1,2})[\u2032'](\d{1,2})[″"]\s*([NESW])$"#).unwrap()
+			Regex::new(r#"(?i)^(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])\s*,?\s*(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])$"#).unwrap()
 		});
 		if let Some(captures) = simple_regex.captures(input) {
 			if let Some((Ok(latitude), Ok(longitude))) = captures
@@ -83,11 +94,11 @@ impl Coordinates {
 
 		if let Some(captures) = fancier_regex.captures(input) {
 			if let Some((
-				hours_a,
+				degrees_a,
 				minutes_a,
 				seconds_a,
 				direction_a,
-				hours_b,
+				degrees_b,
 				minutes_b,
 				seconds_b,
 				direction_b,
@@ -98,23 +109,14 @@ impl Coordinates {
 				.map(|capture| capture.as_str())
 				.collect_tuple()
 			{
-				let direction_a = DIRECTIONS
-					.iter()
-					.find(|dir| {
-						dir.letter == direction_a.chars().next().unwrap().to_ascii_uppercase()
-					})
-					.unwrap();
-				let direction_b = DIRECTIONS
-					.iter()
-					.find(|dir| {
-						dir.letter == direction_b.chars().next().unwrap().to_ascii_uppercase()
-					})
-					.unwrap();
-				let (hours_a, minutes_a, seconds_a, hours_b, minutes_b, seconds_b) =
-					[hours_a, minutes_a, seconds_a, hours_b, minutes_b, seconds_b]
-						.into_iter()
-						.filter_map(|str| str.parse::<f32>().ok())
-						.collect_tuple()?;
+				let direction_a = Direction::get(direction_a.chars().next().unwrap());
+				let direction_b = Direction::get(direction_b.chars().next().unwrap());
+				let (hours_a, minutes_a, seconds_a, hours_b, minutes_b, seconds_b) = [
+					degrees_a, minutes_a, seconds_a, degrees_b, minutes_b, seconds_b,
+				]
+				.into_iter()
+				.filter_map(|str| str.parse::<f32>().ok())
+				.collect_tuple()?;
 				if direction_a.geoaxis == direction_b.geoaxis {
 					return None; // Invalid combination of directions
 				}
@@ -142,6 +144,7 @@ impl Display for Coordinates {
 	}
 }
 
+/// A location, consisting of coordinates and optional information about it.
 pub struct Location {
 	name: Option<String>,
 	coordinates: Coordinates,
@@ -245,6 +248,23 @@ impl Location {
 mod tests {
 	use super::*;
 
+	fn is_close_enough(num_one: f32, num_two: f32, precision: i32) -> bool {
+		let delta = num_one.abs() * 1.0 / 10.0f32.powi(precision);
+		let start = num_one - delta;
+		let end = num_one + delta;
+		let is_close_enough = (start..end).contains(&num_two);
+		if !is_close_enough {
+			println!(
+				"Num {} is not close enough to {} (precision: {}, range: {:?})",
+				num_two,
+				num_one,
+				precision,
+				start..end
+			);
+		}
+		is_close_enough
+	}
+
 	#[test]
 	fn coord_parsing_simple() {
 		let coords = Coordinates::parse(r#"5.0, 5.0"#).unwrap();
@@ -256,8 +276,16 @@ mod tests {
 		let coords = Coordinates::parse(r#"1°2'3"N4°5'6"E"#).unwrap();
 		let latitude = 1.0 + 2.0 / 60.0 + 3.0 / 60.0 / 60.0;
 		let longitude = 4.0 + 5.0 / 60.0 + 6.0 / 60.0 / 60.0;
-		let delta = 1.000001;
-		assert!((latitude / delta..latitude * delta).contains(&coords.latitude));
-		assert!((longitude / delta..longitude * delta).contains(&coords.longitude));
+
+		assert!(is_close_enough(latitude, coords.latitude, 6));
+		assert!(is_close_enough(longitude, coords.longitude, 6));
+	}
+	#[test]
+	fn coord_parsing_doc_example() {
+		let coords_a = dbg!(Coordinates::parse("52.87619043426636, -118.0795914761888").unwrap());
+		let coords_b = dbg!(Coordinates::parse("52° 52′ 34″ N, 118° 4′ 46″ W").unwrap());
+
+		assert!(is_close_enough(coords_a.latitude, coords_b.latitude, 5));
+		assert!(is_close_enough(coords_a.longitude, coords_b.longitude, 5));
 	}
 }

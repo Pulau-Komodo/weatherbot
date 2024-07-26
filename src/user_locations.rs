@@ -18,7 +18,7 @@ pub async fn handle_set_location(
 		.options
 		.first()
 		.and_then(|arg| arg.value.as_str())
-		.ok_or_else(|| Error::custom("Missing argument"))?;
+		.ok_or_else(|| Error::custom_unfriendly("Missing argument"))?;
 	let client = Client::new();
 	let geocoding = GeocodingResult::get(location_arg, &client).await?;
 	let location = Location::from_geocoding_result(geocoding);
@@ -28,7 +28,7 @@ pub async fn handle_set_location(
 			interaction.user.id,
 			interaction
 				.guild_id
-				.ok_or_else(|| Error::custom("Somehow had no guild ID"))?,
+				.ok_or_else(|| Error::custom_unfriendly("Somehow had no guild ID"))?,
 		)
 		.await?;
 	interaction
@@ -59,6 +59,19 @@ pub fn create_set_location() -> CreateCommand {
 		)
 }
 
+pub fn create_set_coords() -> CreateCommand {
+	CreateCommand::new("set_coords")
+		.description("Set the coordinates to use by default for weather commands.")
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::String,
+				"coordinates",
+				"The coordinates to use by default for weather commands",
+			)
+			.required(true),
+		)
+}
+
 pub async fn handle_unset_location(
 	context: &Context,
 	interaction: &CommandInteraction,
@@ -67,7 +80,7 @@ pub async fn handle_unset_location(
 	let user = interaction.user.id.get() as i64;
 	let domain = interaction
 		.guild_id
-		.ok_or_else(|| Error::custom("Somehow had no guild ID"))?
+		.ok_or_else(|| Error::custom_unfriendly("Somehow had no guild ID"))?
 		.get() as i64;
 	query!(
 		"
