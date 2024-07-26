@@ -14,6 +14,7 @@ mod hourly_forecast;
 mod location;
 mod reply_shortcuts;
 mod user_locations;
+mod util;
 
 #[tokio::main]
 async fn main() {

@@ -1,6 +1,11 @@
 use ab_glyph::FontRef;
 use chrono::{DateTime, FixedOffset, Timelike};
-use graph::util::{composite, make_png};
+use graph::{
+	common_types::{GradientPoint, MultiPointGradient, Range},
+	drawing::{MarkIntervals, Padding, Spacing},
+	generic_graph::{AxisGridLabels, GradientBars, HorizontalLines, Rgb},
+	util::{composite, make_png},
+};
 use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
@@ -12,6 +17,7 @@ use sqlx::{Pool, Sqlite};
 use crate::{
 	error::Error,
 	location::{Coordinates, Location},
+	util::convert_num,
 };
 
 #[derive(Debug, Deserialize)]
@@ -90,24 +96,71 @@ pub async fn handle_hourly(
 	};
 
 	let result = HourlyResult::get(location.coordinates(), &client).await?;
+	let times = result
+		.hourly
+		.time
+		.into_iter()
+		.map(|time| hour_from_timestamp(time as i64, result.utc_offset_seconds))
+		.collect::<Vec<_>>();
 
-	let uvi_image = graph::modules::hourly_uvi::create(
-		font,
-		(0..result.hourly.uv_index.len())
-			.map(|i| {
-				graph::modules::hourly_uvi::HourlyUvi::new(
-					hour_from_timestamp(result.hourly.time[i] as i64, result.utc_offset_seconds),
-					result.hourly.uv_index[i],
-				)
-			})
-			.collect(),
+	let max_uv = result
+		.hourly
+		.uv_index
+		.iter()
+		.chain(&result.hourly.uv_index_clear_sky)
+		.fold(0.0f32, |acc, num| acc.max(*num));
+	let uv_range = Range::new(0, convert_num(max_uv));
+
+	let padding = Padding {
+		above: 7,
+		below: 19,
+		left: 21,
+		right: 3,
+	};
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 10,
+	};
+	let mut chart = graph::generic_graph::Chart::new(
+		result.hourly.uv_index.len() + 1,
+		uv_range.len() as u32,
+		spacing,
+		padding,
 	);
+
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(1, 1),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: uv_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font: font.clone(),
+		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+	});
+	chart.draw(HorizontalLines {
+		colour: Rgb([255, 255, 255]),
+		data: result
+			.hourly
+			.uv_index_clear_sky
+			.into_iter()
+			.map(convert_num),
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9 / 2, [255, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9, [255, 0, 33]),
+		]),
+		data: result.hourly.uv_index.into_iter().map(convert_num),
+	});
+
+	let uvi_image = chart.into_canvas();
 	let temp_image = graph::modules::hourly_temp::create(
 		font,
 		(0..result.hourly.temperature_2m.len())
 			.map(|i| {
 				graph::modules::hourly_temp::HourlyTemps::new(
-					hour_from_timestamp(result.hourly.time[i] as i64, result.utc_offset_seconds),
+					times[i],
 					result.hourly.temperature_2m[i],
 					result.hourly.apparent_temperature[i],
 					result.hourly.relative_humidity_2m[i],

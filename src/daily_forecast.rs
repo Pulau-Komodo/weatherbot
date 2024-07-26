@@ -18,6 +18,7 @@ use sqlx::{Pool, Sqlite};
 use crate::{
 	error::Error,
 	location::{Coordinates, Location},
+	util::convert_num,
 };
 
 #[derive(Debug, Deserialize)]
@@ -105,7 +106,7 @@ pub async fn handle_daily(
 		.minmax()
 		.into_option()
 		.unwrap_or((&0.0, &0.0));
-	let temp_range = Range::new((min * 100.0).round() as i32, (max * 100.0).round() as i32);
+	let temp_range = Range::new(convert_num(min), convert_num(max));
 	let chart_temp_range =
 		previous_and_next_multiple(Range::new(temp_range.start(), temp_range.end()), 4);
 
@@ -125,8 +126,6 @@ pub async fn handle_daily(
 		spacing,
 		padding,
 	);
-
-	let convert_num = |n: f32| (n * 100.0).round() as i32;
 
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(2, 4),
