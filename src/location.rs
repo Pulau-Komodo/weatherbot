@@ -1,4 +1,4 @@
-use std::{cell::LazyCell, fmt::Display};
+use std::{fmt::Display, sync::LazyLock};
 
 use itertools::Itertools;
 use regex::Regex;
@@ -45,6 +45,16 @@ impl Direction {
 	}
 }
 
+static SIMPLE_COORDS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+	Regex::new(
+		r"^([+-]?\s*(?:\d+(?:\.\d+)?|\.\d+))(?:\s+|\s*,\s*)([+-]?\s*(?:\d+(?:\.\d+)?|\.\d+))$",
+	)
+	.unwrap()
+});
+static FANCIER_COORDS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+	Regex::new(r#"(?i)^(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])\s*,?\s*(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])$"#).unwrap()
+});
+
 #[derive(Debug, Clone, Copy)]
 pub struct Coordinates {
 	/// How far above the equator
@@ -68,16 +78,7 @@ impl Coordinates {
 	///
 	/// Degrees, minutes, seconds: `52° 52′ 34″ N, 118° 4′ 46″ W` (does not support decimals, spaces and comma optional, `′` and `″` can be `'` and `"` instead)
 	pub fn parse(input: &str) -> Option<Self> {
-		let simple_regex = LazyCell::new(|| {
-			Regex::new(
-				r"^([+-]?\s*(?:\d+(?:\.\d+)?|\.\d+))(?:\s+|\s*,\s*)([+-]?\s*(?:\d+(?:\.\d+)?|\.\d+))$",
-			)
-			.unwrap()
-		});
-		let fancier_regex = LazyCell::new(|| {
-			Regex::new(r#"(?i)^(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])\s*,?\s*(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])$"#).unwrap()
-		});
-		if let Some(captures) = simple_regex.captures(input) {
+		if let Some(captures) = SIMPLE_COORDS_REGEX.captures(input) {
 			if let Some((Ok(latitude), Ok(longitude))) = captures
 				.iter()
 				.skip(1)
@@ -92,7 +93,7 @@ impl Coordinates {
 			}
 		}
 
-		if let Some(captures) = fancier_regex.captures(input) {
+		if let Some(captures) = FANCIER_COORDS_REGEX.captures(input) {
 			if let Some((
 				degrees_a,
 				minutes_a,
