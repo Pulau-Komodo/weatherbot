@@ -22,7 +22,7 @@ use crate::{
 
 #[derive(Debug, Deserialize)]
 struct HourlyWeather {
-	time: Vec<u32>,
+	time: Vec<i64>,
 	uv_index: Vec<f32>,
 	uv_index_clear_sky: Vec<f32>,
 	temperature_2m: Vec<f32>,
@@ -77,30 +77,14 @@ pub async fn handle_hourly(
 	font: &FontRef<'static>,
 ) -> Result<(), Error> {
 	let client = Client::new();
-	let location = match interaction
-		.data
-		.options
-		.first()
-		.and_then(|option| option.value.as_str())
-	{
-		Some(arg) => Location::try_from_arg(arg, &client).await?,
-		None => Location::get_for_user(
-			database,
-			interaction.user.id,
-			interaction
-				.guild_id
-				.ok_or_else(|| Error::custom_unfriendly("Somehow could not get guild ID"))?,
-		)
-		.await?
-		.ok_or_else(|| Error::friendly("No location set, and no location provided"))?,
-	};
+	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
 
 	let result = HourlyResult::get(location.coordinates(), &client).await?;
 	let times = result
 		.hourly
 		.time
 		.into_iter()
-		.map(|time| hour_from_timestamp(time as i64, result.utc_offset_seconds))
+		.map(|time| hour_from_timestamp(time, result.utc_offset_seconds))
 		.collect::<Vec<_>>();
 
 	let max_uv = result

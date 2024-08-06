@@ -23,7 +23,7 @@ use crate::{
 
 #[derive(Debug, Deserialize)]
 struct DailyWeather {
-	time: Vec<u32>,
+	time: Vec<i64>,
 	temperature_2m_min: Vec<f32>,
 	temperature_2m_max: Vec<f32>,
 	apparent_temperature_min: Vec<f32>,
@@ -76,23 +76,7 @@ pub async fn handle_daily(
 	font: &FontRef<'static>,
 ) -> Result<(), Error> {
 	let client = Client::new();
-	let location = match interaction
-		.data
-		.options
-		.first()
-		.and_then(|option| option.value.as_str())
-	{
-		Some(arg) => Location::try_from_arg(arg, &client).await?,
-		None => Location::get_for_user(
-			database,
-			interaction.user.id,
-			interaction
-				.guild_id
-				.ok_or_else(|| Error::custom_unfriendly("Somehow could not get guild ID"))?,
-		)
-		.await?
-		.ok_or_else(|| Error::friendly("No location set, and no location provided"))?,
-	};
+	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
 
 	let result = DailyResult::get(location.coordinates(), &client).await?;
 
@@ -135,7 +119,7 @@ pub async fn handle_daily(
 			.daily
 			.time
 			.into_iter()
-			.map(|time| day_from_timestamp(time as i64, result.utc_offset_seconds)),
+			.map(|time| day_from_timestamp(time, result.utc_offset_seconds)),
 		horizontal_labels_centered: false,
 		font: font.clone(),
 		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },

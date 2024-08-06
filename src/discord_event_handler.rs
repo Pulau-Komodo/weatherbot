@@ -6,6 +6,7 @@ use serenity::{
 use sqlx::{Pool, Sqlite};
 
 use crate::{
+	current::{self, handle_current},
 	daily_forecast::{self, handle_daily},
 	error::Error,
 	geocoding::{self, handle_find_coordinates},
@@ -31,6 +32,9 @@ impl EventHandler for DiscordEventHandler {
 		if let Interaction::Command(interaction) = interaction {
 			let result = match interaction.data.name.as_str() {
 				"find_coordinates" => handle_find_coordinates(&context, &interaction).await,
+				"current" => {
+					handle_current(&context, &interaction, &self.database, &self.font).await
+				}
 				"hourly" => handle_hourly(&context, &interaction, &self.database, &self.font).await,
 				"daily" => handle_daily(&context, &interaction, &self.database, &self.font).await,
 				"set_location" => handle_set_location(&context, &interaction, &self.database).await,
@@ -57,6 +61,7 @@ impl EventHandler for DiscordEventHandler {
 		if Some("register") == arg.as_deref() {
 			let commands = Vec::from([
 				geocoding::create_find_coordinates(),
+				current::create_current(),
 				hourly_forecast::create_hourly(),
 				daily_forecast::create_daily(),
 				user_locations::create_set_location(),

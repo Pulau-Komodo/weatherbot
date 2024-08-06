@@ -3,7 +3,7 @@ use std::{cell::LazyCell, fmt::Display};
 use itertools::Itertools;
 use regex::Regex;
 use reqwest::Client;
-use serenity::all::{GuildId, UserId};
+use serenity::all::{CommandInteraction, GuildId, UserId};
 use sqlx::{query, Pool, Sqlite};
 
 use crate::{error::Error, geocoding::GeocodingResult};
@@ -229,6 +229,30 @@ impl Location {
 		.execute(database)
 		.await?;
 		Ok(())
+	}
+	pub async fn get_from_argument_or_for_user(
+		interaction: &CommandInteraction,
+		client: &Client,
+		database: &Pool<Sqlite>,
+	) -> Result<Self, Error> {
+		let location = match interaction
+			.data
+			.options
+			.first()
+			.and_then(|option| option.value.as_str())
+		{
+			Some(arg) => Location::try_from_arg(arg, client).await?,
+			None => Location::get_for_user(
+				database,
+				interaction.user.id,
+				interaction
+					.guild_id
+					.ok_or_else(|| Error::custom_unfriendly("Somehow could not get guild ID"))?,
+			)
+			.await?
+			.ok_or_else(|| Error::friendly("No location set, and no location provided"))?,
+		};
+		Ok(location)
 	}
 	pub fn name(&self) -> &str {
 		self.name.as_deref().unwrap_or("unspecified")

@@ -5,6 +5,7 @@ use discord_event_handler::DiscordEventHandler;
 use location::Coordinates;
 use serenity::all::GatewayIntents;
 
+mod current;
 mod daily_forecast;
 mod database;
 mod discord_event_handler;
