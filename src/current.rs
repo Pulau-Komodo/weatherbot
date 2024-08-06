@@ -1,4 +1,7 @@
+use std::sync::LazyLock;
+
 use ab_glyph::FontRef;
+use chrono::Duration;
 use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
@@ -16,6 +19,7 @@ use crate::{
 #[derive(Debug, Deserialize)]
 struct CurrentWeather {
 	time: i64,
+	/// Pretty sure this is the interval of the weather reports it interpolated between to get current weather.
 	interval: Option<u32>,
 	temperature_2m: f32,
 	relative_humidity_2m: f32,
@@ -85,7 +89,22 @@ pub async fn handle_current(
 	let weather = CurrentResult::get(location.coordinates(), &client).await?;
 	let current = weather.current;
 
-	let content = format!("Temperature: {}°C, apparent temperature: {}°C, relative humidity: {}%, precipitation: {}mm, rain: {}mm, showers: {}mm, snowfall: {}cm, weather code: {}, cloud cover: {}%, wind speed: {}km/h, wind direction: {}°, wind gusts: {}km/h, UVI: {}, clear-sky UVI: {}", current.temperature_2m, current.apparent_temperature, current.relative_humidity_2m, current.precipitation, current.rain, current.showers, current.snowfall, weather_code_to_str(current.weather_code).unwrap_or("?"), current.cloud_cover, current.wind_speed_10m, current.wind_direction_10m, current.wind_gusts_10m, current.uv_index, current.uv_index_clear_sky);
+	let interval_text = current
+		.interval
+		.and_then(|interval| {
+			static CONFIG: LazyLock<stringify_interval::DisplayConfigConstant> =
+				LazyLock::new(|| {
+					stringify_interval::DisplayConfigConstant::default().with_seconds()
+				});
+			static TEXT: LazyLock<stringify_interval::Text> =
+				LazyLock::new(stringify_interval::Text::default);
+			stringify_interval::without_date(Duration::seconds(interval as i64), &CONFIG, &TEXT)
+				.inspect_err(|error| eprintln!("{error}"))
+				.ok()
+		})
+		.unwrap_or(String::from("unknown"));
+
+	let content = format!("Temperature: {}°C, apparent temperature: {}°C, relative humidity: {}%, precipitation: {}mm, rain: {}mm, showers: {}mm, snowfall: {}cm, weather code: {}, cloud cover: {}%, wind speed: {}km/h, wind direction: {}°, wind gusts: {}km/h, UVI: {}, clear-sky UVI: {}, interval: {}", current.temperature_2m, current.apparent_temperature, current.relative_humidity_2m, current.precipitation, current.rain, current.showers, current.snowfall, weather_code_to_str(current.weather_code).unwrap_or("?"), current.cloud_cover, current.wind_speed_10m, current.wind_direction_10m, current.wind_gusts_10m, current.uv_index, current.uv_index_clear_sky, interval_text);
 
 	interaction
 		.create_response(

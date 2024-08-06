@@ -2647,6 +2647,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "stringify_interval"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24dd3cf8b761bf0eedd632a22bb71c38b18e9d01ddf234b57efac25c4425e05d"
+dependencies = [
+ "chrono",
+ "thiserror",
+]
+
+[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3307,6 +3317,7 @@ dependencies = [
  "serde",
  "serenity",
  "sqlx",
+ "stringify_interval",
  "tokio",
 ]
 
