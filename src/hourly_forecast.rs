@@ -3,8 +3,8 @@ use chrono::{DateTime, FixedOffset, Timelike};
 use graph::{
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
-	generic_graph::{AxisGridLabels, GradientBars, HorizontalLines, Rgb},
-	util::{composite, make_png},
+	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Rgb, SolidBars},
+	util::{composite, make_png, next_multiple},
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -28,6 +28,8 @@ struct HourlyWeather {
 	temperature_2m: Vec<f32>,
 	apparent_temperature: Vec<f32>,
 	relative_humidity_2m: Vec<i32>,
+	precipitation_probability: Vec<u8>,
+	precipitation: Vec<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +51,8 @@ impl HourlyResult {
 			.query(&[("hourly", "temperature_2m")])
 			.query(&[("hourly", "relative_humidity_2m")])
 			.query(&[("hourly", "apparent_temperature")])
+			.query(&[("hourly", "precipitation_probability")])
+			.query(&[("hourly", "precipitation")])
 			.query(&[("timeformat", "unixtime"), ("timezone", "auto")])
 			.query(&[("forecast_hours", 24)])
 			.query(&[
@@ -93,7 +97,7 @@ pub async fn handle_hourly(
 		.iter()
 		.chain(&result.hourly.uv_index_clear_sky)
 		.fold(0.0f32, |acc, num| acc.max(*num));
-	let uv_range = Range::new(0, convert_num(max_uv));
+	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), 1));
 
 	let padding = Padding {
 		above: 7,
@@ -105,7 +109,7 @@ pub async fn handle_hourly(
 		horizontal: 8,
 		vertical: 10,
 	};
-	let mut chart = graph::generic_graph::Chart::new(
+	let mut chart = Chart::new(
 		result.hourly.uv_index.len() + 1,
 		uv_range.len() as u32,
 		spacing,
@@ -139,6 +143,86 @@ pub async fn handle_hourly(
 	});
 
 	let uvi_image = chart.into_canvas();
+
+	let padding = Padding {
+		above: 7,
+		below: 19,
+		left: 21,
+		right: 3,
+	};
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 1,
+	};
+
+	let probability_range = Range::new(0, 100 * 100);
+	let mut chart = Chart::new(
+		result.hourly.precipitation_probability.len() + 1,
+		probability_range.len() as u32,
+		spacing,
+		padding,
+	);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(10, 20),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: probability_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font: font.clone(),
+		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([0, 180, 255]),
+		data: result
+			.hourly
+			.precipitation_probability
+			.into_iter()
+			.map(|n| n as i32 * 100),
+	});
+
+	let pop_image = chart.into_canvas();
+
+	let padding = Padding {
+		above: 7,
+		below: 19,
+		left: 21,
+		right: 3,
+	};
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 16,
+	};
+	let max_precipitation = result
+		.hourly
+		.precipitation
+		.iter()
+		.fold(0.0f32, |acc, num| acc.max(*num));
+
+	let precipitation_range = Range::new(0, next_multiple(convert_num(max_precipitation), 1));
+
+	let mut chart = Chart::new(
+		result.hourly.precipitation.len() + 1,
+		precipitation_range.len() as u32,
+		spacing,
+		padding,
+	);
+
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(1, 1),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: precipitation_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: false,
+		font: font.clone(),
+		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([0, 148, 255]),
+		data: result.hourly.precipitation.into_iter().map(convert_num),
+	});
+
+	let precipitation_image = chart.into_canvas();
+
 	let temp_image = graph::modules::hourly_temp::create(
 		font,
 		(0..result.hourly.temperature_2m.len())
@@ -152,7 +236,7 @@ pub async fn handle_hourly(
 			})
 			.collect(),
 	);
-	let composite = composite(&[temp_image, uvi_image]);
+	let composite = composite(&[temp_image, pop_image, precipitation_image, uvi_image]);
 	let image = make_png(composite);
 
 	interaction

@@ -1,10 +1,10 @@
 use ab_glyph::FontRef;
 use chrono::{DateTime, Datelike, FixedOffset};
 use graph::{
-	common_types::Range,
-	drawing::MarkIntervals,
-	generic_graph::{AxisGridLabels, Line, Rgb},
-	util::previous_and_next_multiple,
+	common_types::{GradientPoint, MultiPointGradient, Range},
+	drawing::{MarkIntervals, Padding, Spacing},
+	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb},
+	util::{composite, make_png, next_multiple, previous_and_next_multiple},
 };
 use itertools::Itertools;
 use reqwest::Client;
@@ -28,6 +28,8 @@ struct DailyWeather {
 	temperature_2m_max: Vec<f32>,
 	apparent_temperature_min: Vec<f32>,
 	apparent_temperature_max: Vec<f32>,
+	uv_index_max: Vec<f32>,
+	uv_index_clear_sky_max: Vec<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +50,8 @@ impl DailyResult {
 			.query(&[("daily", "temperature_2m_max")])
 			.query(&[("daily", "apparent_temperature_min")])
 			.query(&[("daily", "apparent_temperature_max")])
+			.query(&[("daily", "uv_index_max")])
+			.query(&[("daily", "uv_index_clear_sky_max")])
 			.query(&[("timeformat", "unixtime"), ("timezone", "auto")])
 			//	.query(&[("forecast_days", 7)])
 			.query(&[
@@ -80,6 +84,13 @@ pub async fn handle_daily(
 
 	let result = DailyResult::get(location.coordinates(), &client).await?;
 
+	let times = result
+		.daily
+		.time
+		.into_iter()
+		.map(|time| day_from_timestamp(time, result.utc_offset_seconds))
+		.collect::<Vec<_>>();
+
 	let (&min, &max) = result
 		.daily
 		.apparent_temperature_max
@@ -94,17 +105,17 @@ pub async fn handle_daily(
 	let chart_temp_range =
 		previous_and_next_multiple(Range::new(temp_range.start(), temp_range.end()), 4);
 
-	let padding = graph::drawing::Padding {
+	let padding = Padding {
 		above: 7,
 		below: 19,
 		left: 21,
 		right: 9,
 	};
-	let spacing = graph::drawing::Spacing {
+	let spacing = Spacing {
 		horizontal: 25,
 		vertical: 3,
 	};
-	let mut chart = graph::generic_graph::Chart::new(
+	let mut chart = Chart::new(
 		result.daily.temperature_2m_max.len(),
 		chart_temp_range.len() as u32,
 		spacing,
@@ -115,17 +126,13 @@ pub async fn handle_daily(
 		vertical_intervals: MarkIntervals::new(2, 4),
 		horizontal_intervals: MarkIntervals::new(1, 1),
 		vertical_label_range: chart_temp_range,
-		horizontal_labels: result
-			.daily
-			.time
-			.into_iter()
-			.map(|time| day_from_timestamp(time, result.utc_offset_seconds)),
+		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: false,
 		font: font.clone(),
 		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
 	});
 	chart.draw(Line {
-		colour: Rgb([0, 255, 33]),
+		colour: Rgb([0, 170, 33]),
 		data: result
 			.daily
 			.apparent_temperature_min
@@ -134,7 +141,7 @@ pub async fn handle_daily(
 		max: chart_temp_range.end(),
 	});
 	chart.draw(Line {
-		colour: Rgb([0, 255, 33]),
+		colour: Rgb([0, 170, 33]),
 		data: result
 			.daily
 			.apparent_temperature_max
@@ -152,15 +159,69 @@ pub async fn handle_daily(
 		data: result.daily.temperature_2m_max.into_iter().map(convert_num),
 		max: chart_temp_range.end(),
 	});
+	let uvi_image = chart.into_canvas();
 
-	let temp_image = graph::util::make_png(chart.into_canvas());
+	let max_uv = result
+		.daily
+		.uv_index_max
+		.iter()
+		.chain(&result.daily.uv_index_clear_sky_max)
+		.fold(0.0f32, |acc, num| acc.max(*num));
+	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), 1));
+
+	let spacing = Spacing {
+		horizontal: 25,
+		vertical: 10,
+	};
+	let padding = Padding {
+		above: 7,
+		below: 19,
+		left: 21,
+		right: 3,
+	};
+
+	let mut chart = Chart::new(
+		result.daily.uv_index_max.len() + 1,
+		uv_range.len() as u32,
+		spacing,
+		padding,
+	);
+
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(1, 1),
+		horizontal_intervals: MarkIntervals::new(1, 1),
+		vertical_label_range: uv_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font: font.clone(),
+		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+	});
+	chart.draw(HorizontalLines {
+		colour: Rgb([255, 255, 255]),
+		data: result
+			.daily
+			.uv_index_clear_sky_max
+			.into_iter()
+			.map(convert_num),
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9 / 2, [255, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9, [255, 0, 33]),
+		]),
+		data: result.daily.uv_index_max.into_iter().map(convert_num),
+	});
+	let temp_image = chart.into_canvas();
+	let composite = composite(&[uvi_image, temp_image]);
+	let image = make_png(composite);
 
 	interaction
 		.create_response(
 			context,
 			CreateInteractionResponse::Message(
 				CreateInteractionResponseMessage::new()
-					.add_file(CreateAttachment::bytes(temp_image, "temperature.png")),
+					.add_file(CreateAttachment::bytes(image, "daily.png")),
 			),
 		)
 		.await?;
