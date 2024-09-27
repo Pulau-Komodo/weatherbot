@@ -54,7 +54,7 @@ impl HourlyResult {
 			.query(&[("hourly", "precipitation_probability")])
 			.query(&[("hourly", "precipitation")])
 			.query(&[("timeformat", "unixtime"), ("timezone", "auto")])
-			.query(&[("forecast_hours", 24)])
+			.query(&[("forecast_hours", 48)])
 			.query(&[
 				("latitude", coordinates.latitude),
 				("longitude", coordinates.longitude),
