@@ -1,11 +1,15 @@
-use ab_glyph::FontRef;
+use ab_glyph::{FontRef, PxScale};
 use chrono::{DateTime, FixedOffset, Timelike};
 use graph::{
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
-	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Rgb, SolidBars},
-	util::{composite, make_png, next_multiple},
+	generic_graph::{
+		AxisGridLabels, Chart, GradientBars, HorizontalLines, Label, Line, Rgb, SolidBars,
+		TextSegment,
+	},
+	util::{composite, make_png, next_multiple, previous_and_next_multiple},
 };
+use itertools::Itertools;
 use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
@@ -79,6 +83,10 @@ fn hour_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 		.hour() as u8
 }
 
+const LABEL_SIZE: PxScale = PxScale { x: 20.0, y: 20.0 };
+const AXIS_LABEL_SIZE: PxScale = PxScale { x: 14.0, y: 14.0 };
+const LABEL_DISTANCE_FROM_TOP: i32 = 5;
+
 pub async fn handle_hourly(
 	context: &Context,
 	interaction: &CommandInteraction,
@@ -96,6 +104,100 @@ pub async fn handle_hourly(
 		.map(|time| hour_from_timestamp(time, result.utc_offset_seconds))
 		.collect::<Vec<_>>();
 
+	let padding = Padding {
+		above: 3 + LABEL_SIZE.y as u32 + LABEL_DISTANCE_FROM_TOP as u32,
+		below: 19,
+		left: 21,
+		right: 3,
+	};
+
+	let temps: Vec<_> = result
+		.hourly
+		.temperature_2m
+		.into_iter()
+		.zip(result.hourly.apparent_temperature)
+		.zip(result.hourly.relative_humidity_2m)
+		.map(|((temp, apparent), humidity)| {
+			[temp, apparent, wet_bulb_temp(temp, humidity as f32)].map(convert_num)
+		})
+		.collect();
+
+	let temp_range = temps
+		.iter()
+		.flatten()
+		.copied()
+		.minmax()
+		.into_option()
+		.unwrap_or((0, 0));
+	let chart_temp_range = previous_and_next_multiple(Range::new(temp_range.0, temp_range.1), 4);
+
+	let mut chart = Chart::new(
+		temps.len(),
+		chart_temp_range.len() as u32,
+		Spacing {
+			horizontal: 8,
+			vertical: 3,
+		},
+		padding,
+	);
+	chart.draw(Label {
+		text_segments: &[
+			TextSegment {
+				text: "Dry bulb",
+				color: Rgb([255, 0, 0]),
+			},
+			TextSegment {
+				text: ", ",
+				color: Rgb([255, 255, 255]),
+			},
+			TextSegment {
+				text: "wet bulb",
+				color: Rgb([0, 148, 255]),
+			},
+			TextSegment {
+				text: " and ",
+				color: Rgb([255, 255, 255]),
+			},
+			TextSegment {
+				text: "apparent",
+				color: Rgb([0, 255, 33]),
+			},
+			TextSegment {
+				text: " temperatures (°C)",
+				color: Rgb([255, 255, 255]),
+			},
+		],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP,
+	});
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(2, 4),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: chart_temp_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: false,
+		font: font.clone(),
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(Line {
+		colour: Rgb([0, 255, 33]),
+		data: temps.iter().map(|[_, apparent, _]| apparent).copied(),
+		max: chart_temp_range.end(),
+	});
+	chart.draw(Line {
+		colour: Rgb([0, 148, 255]),
+		data: temps.iter().map(|[_, _, wet_bulb]| wet_bulb).copied(),
+		max: chart_temp_range.end(),
+	});
+	chart.draw(Line {
+		colour: Rgb([255, 0, 0]),
+		data: temps.iter().map(|[temp, _, _]| temp).copied(),
+		max: chart_temp_range.end(),
+	});
+
+	let temp_image = chart.into_canvas();
+
 	let max_uv = result
 		.hourly
 		.uv_index
@@ -104,23 +206,32 @@ pub async fn handle_hourly(
 		.fold(0.0f32, |acc, num| acc.max(*num));
 	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), 1));
 
-	let padding = Padding {
-		above: 7,
-		below: 19,
-		left: 21,
-		right: 3,
-	};
 	let spacing = Spacing {
 		horizontal: 8,
 		vertical: 10,
 	};
+
 	let mut chart = Chart::new(
 		result.hourly.uv_index.len() + 1,
 		uv_range.len() as u32,
 		spacing,
 		padding,
 	);
-
+	chart.draw(Label {
+		text_segments: &[
+			TextSegment {
+				text: "UV index",
+				color: Rgb([0, 255, 33]),
+			},
+			TextSegment {
+				text: " (and clear sky UVI)",
+				color: Rgb([255, 255, 255]),
+			},
+		],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP,
+	});
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(1, 1),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -128,7 +239,7 @@ pub async fn handle_hourly(
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: true,
 		font: font.clone(),
-		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(HorizontalLines {
 		colour: Rgb([255, 255, 255]),
@@ -149,12 +260,6 @@ pub async fn handle_hourly(
 
 	let uvi_image = chart.into_canvas();
 
-	let padding = Padding {
-		above: 7,
-		below: 19,
-		left: 21,
-		right: 3,
-	};
 	let spacing = Spacing {
 		horizontal: 8,
 		vertical: 1,
@@ -167,6 +272,21 @@ pub async fn handle_hourly(
 		spacing,
 		padding,
 	);
+	chart.draw(Label {
+		text_segments: &[
+			TextSegment {
+				text: "Probability of ",
+				color: Rgb([255, 255, 255]),
+			},
+			TextSegment {
+				text: "precipitation",
+				color: Rgb([0, 180, 255]),
+			},
+		],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP,
+	});
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(10, 20),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -174,7 +294,7 @@ pub async fn handle_hourly(
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: true,
 		font: font.clone(),
-		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(SolidBars {
 		colour: Rgb([0, 180, 255]),
@@ -187,12 +307,6 @@ pub async fn handle_hourly(
 
 	let pop_image = chart.into_canvas();
 
-	let padding = Padding {
-		above: 7,
-		below: 19,
-		left: 21,
-		right: 3,
-	};
 	let spacing = Spacing {
 		horizontal: 8,
 		vertical: 16,
@@ -211,7 +325,25 @@ pub async fn handle_hourly(
 		spacing,
 		padding,
 	);
-
+	chart.draw(Label {
+		text_segments: &[
+			TextSegment {
+				text: "Amount of ",
+				color: Rgb([255, 255, 255]),
+			},
+			TextSegment {
+				text: "precipitation",
+				color: Rgb([0, 148, 255]),
+			},
+			TextSegment {
+				text: " (mm)",
+				color: Rgb([255, 255, 255]),
+			},
+		],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP,
+	});
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(1, 1),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -219,19 +351,13 @@ pub async fn handle_hourly(
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: false,
 		font: font.clone(),
-		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(SolidBars {
 		colour: Rgb([0, 148, 255]),
 		data: result.hourly.precipitation.into_iter().map(convert_num),
 	});
 
-	let padding: Padding = Padding {
-		above: 7,
-		below: 19,
-		left: 21,
-		right: 3,
-	};
 	let spacing: Spacing = Spacing {
 		horizontal: 8,
 		vertical: 5,
@@ -255,27 +381,35 @@ pub async fn handle_hourly(
 
 	let precipitation_image = chart.into_canvas();
 
-	let temp_image = graph::modules::hourly_temp::create(
-		font,
-		(0..result.hourly.temperature_2m.len())
-			.map(|i| {
-				graph::modules::hourly_temp::HourlyTemps::new(
-					times[i],
-					result.hourly.temperature_2m[i],
-					result.hourly.apparent_temperature[i],
-					result.hourly.relative_humidity_2m[i],
-				)
-			})
-			.collect(),
-	);
-
 	let mut chart = Chart::new(
 		result.hourly.wind_speed_10m.len() + 1,
 		data_range.len() as u32,
 		spacing,
 		padding,
 	);
-
+	chart.draw(Label {
+		text_segments: &[
+			TextSegment {
+				text: "Wind",
+				color: Rgb([0, 255, 33]),
+			},
+			TextSegment {
+				text: " and ",
+				color: Rgb([255, 255, 255]),
+			},
+			TextSegment {
+				text: "gust",
+				color: Rgb([70, 119, 67]),
+			},
+			TextSegment {
+				text: " speed (m/s)",
+				color: Rgb([255, 255, 255]),
+			},
+		],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP,
+	});
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(5, 5),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -283,7 +417,7 @@ pub async fn handle_hourly(
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: true,
 		font: font.clone(),
-		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(GradientBars {
 		gradient: MultiPointGradient::new(vec![
@@ -338,4 +472,14 @@ pub fn create_hourly() -> CreateCommand {
 			)
 			.required(false),
 		)
+}
+
+/// Calculates wet bulb temperature in °C given dry bulb temperature in °C and relative humidity * 100 (0-100).
+///
+/// Supposedly this is only accurate for temperatures between -20 °C and 50 °C, and relative humidities between .05 and .99 (5 and 99).
+fn wet_bulb_temp(temp: f32, humidity: f32) -> f32 {
+	temp * (0.15197 * (humidity + 8.313659).sqrt()).atan() + (temp + humidity).atan()
+		- (humidity - 1.676331).atan()
+		+ 0.00391838 * humidity.powf(1.5) * (0.023101 * humidity).atan()
+		- 4.686035
 }

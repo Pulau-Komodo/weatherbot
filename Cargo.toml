@@ -25,7 +25,7 @@ serenity = { version = "0.12.2", default-features = false, features = [
 tokio = { version = "1.38.1", features = ["macros", "rt-multi-thread"] }
 reqwest = { version = "0.11.18", features = ["json"] }
 serde = "1.0.175"
-graph = { git = "https://github.com/Pulau-Komodo/graph.git", rev = "f80442a" }
+graph = { git = "https://github.com/Pulau-Komodo/graph.git", rev = "81eac4783397692872ce2a661941fce4809cf327" }
 chrono = { version = "0.4.38", features = ["serde"] }
 ab_glyph = "0.2.28"
 regex = "1.10.5"

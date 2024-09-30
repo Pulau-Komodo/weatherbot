@@ -1,9 +1,11 @@
-use ab_glyph::FontRef;
+use ab_glyph::{FontRef, PxScale};
 use chrono::{DateTime, Datelike, FixedOffset};
 use graph::{
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
-	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb},
+	generic_graph::{
+		AxisGridLabels, Chart, GradientBars, HorizontalLines, Label, Line, Rgb, TextSegment,
+	},
 	util::{composite, make_png, next_multiple, previous_and_next_multiple},
 };
 use itertools::Itertools;
@@ -73,6 +75,10 @@ fn day_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 		.day() as u8
 }
 
+const LABEL_SIZE: PxScale = PxScale { x: 15.0, y: 15.0 };
+const AXIS_LABEL_SIZE: PxScale = PxScale { x: 14.0, y: 14.0 };
+const LABEL_DISTANCE_FROM_TOP: i32 = 5;
+
 pub async fn handle_daily(
 	context: &Context,
 	interaction: &CommandInteraction,
@@ -91,6 +97,15 @@ pub async fn handle_daily(
 		.map(|time| day_from_timestamp(time, result.utc_offset_seconds))
 		.collect::<Vec<_>>();
 
+	let line_height = LABEL_SIZE.y as u32 + LABEL_DISTANCE_FROM_TOP as u32;
+
+	let padding = Padding {
+		above: 3 + line_height,
+		below: 19,
+		left: 21,
+		right: 9,
+	};
+
 	let (&min, &max) = result
 		.daily
 		.apparent_temperature_max
@@ -105,23 +120,63 @@ pub async fn handle_daily(
 	let chart_temp_range =
 		previous_and_next_multiple(Range::new(temp_range.start(), temp_range.end()), 4);
 
-	let padding = Padding {
-		above: 7,
-		below: 19,
-		left: 21,
-		right: 9,
-	};
 	let spacing = Spacing {
 		horizontal: 25,
 		vertical: 3,
 	};
+
 	let mut chart = Chart::new(
 		result.daily.temperature_2m_max.len(),
 		chart_temp_range.len() as u32,
 		spacing,
-		padding,
+		Padding {
+			above: padding.above + line_height * 2,
+			left: padding.left + spacing.horizontal / 2,
+			right: padding.right + spacing.horizontal / 2,
+			..padding
+		},
 	);
-
+	chart.draw(Label {
+		text_segments: &[
+			TextSegment {
+				text: "Minimum",
+				color: Rgb([0, 148, 255]),
+			},
+			TextSegment {
+				text: ", ",
+				color: Rgb([255, 255, 255]),
+			},
+			TextSegment {
+				text: "maximum",
+				color: Rgb([255, 0, 0]),
+			},
+			TextSegment {
+				text: " and",
+				color: Rgb([255, 255, 255]),
+			},
+		],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP,
+	});
+	chart.draw(Label {
+		text_segments: &[TextSegment {
+			text: "apparent minimum and maximum",
+			color: Rgb([0, 170, 33]),
+		}],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP + line_height as i32,
+	});
+	chart.draw(Label {
+		text_segments: &[TextSegment {
+			text: "temperatures (°C)",
+			color: Rgb([255, 255, 255]),
+		}],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP + line_height as i32 * 2,
+	});
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(2, 4),
 		horizontal_intervals: MarkIntervals::new(1, 1),
@@ -129,7 +184,7 @@ pub async fn handle_daily(
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: false,
 		font: font.clone(),
-		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(Line {
 		colour: Rgb([0, 170, 33]),
@@ -173,12 +228,6 @@ pub async fn handle_daily(
 		horizontal: 25,
 		vertical: 10,
 	};
-	let padding = Padding {
-		above: 7,
-		below: 19,
-		left: 21,
-		right: 3,
-	};
 
 	let mut chart = Chart::new(
 		result.daily.uv_index_max.len() + 1,
@@ -186,7 +235,21 @@ pub async fn handle_daily(
 		spacing,
 		padding,
 	);
-
+	chart.draw(Label {
+		text_segments: &[
+			TextSegment {
+				text: "UV index",
+				color: Rgb([0, 255, 33]),
+			},
+			TextSegment {
+				text: " (and clear sky UVI)",
+				color: Rgb([255, 255, 255]),
+			},
+		],
+		font: font.clone(),
+		font_scale: LABEL_SIZE,
+		distance_from_top: LABEL_DISTANCE_FROM_TOP,
+	});
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(1, 1),
 		horizontal_intervals: MarkIntervals::new(1, 1),
