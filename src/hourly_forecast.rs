@@ -30,6 +30,8 @@ struct HourlyWeather {
 	relative_humidity_2m: Vec<i32>,
 	precipitation_probability: Vec<u8>,
 	precipitation: Vec<f32>,
+	wind_speed_10m: Vec<f32>,
+	wind_gusts_10m: Vec<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +55,9 @@ impl HourlyResult {
 			.query(&[("hourly", "apparent_temperature")])
 			.query(&[("hourly", "precipitation_probability")])
 			.query(&[("hourly", "precipitation")])
+			.query(&[("hourly", "wind_speed_10m")])
+			.query(&[("hourly", "wind_gusts_10m")])
+			.query(&[("wind_speed_unit", "ms")])
 			.query(&[("timeformat", "unixtime"), ("timezone", "auto")])
 			.query(&[("forecast_hours", 48)])
 			.query(&[
@@ -221,6 +226,33 @@ pub async fn handle_hourly(
 		data: result.hourly.precipitation.into_iter().map(convert_num),
 	});
 
+	let padding: Padding = Padding {
+		above: 7,
+		below: 19,
+		left: 21,
+		right: 3,
+	};
+	let spacing: Spacing = Spacing {
+		horizontal: 8,
+		vertical: 5,
+	};
+
+	let max_chart_speed = next_multiple(
+		result
+			.hourly
+			.wind_speed_10m
+			.iter()
+			.zip(&result.hourly.wind_gusts_10m)
+			.flat_map(|(a, b)| [a, b])
+			.copied()
+			.map(convert_num)
+			.max()
+			.unwrap_or(0) as i32,
+		5,
+	);
+
+	let data_range = Range::new(0, max_chart_speed);
+
 	let precipitation_image = chart.into_canvas();
 
 	let temp_image = graph::modules::hourly_temp::create(
@@ -236,7 +268,51 @@ pub async fn handle_hourly(
 			})
 			.collect(),
 	);
-	let composite = composite(&[temp_image, pop_image, precipitation_image, uvi_image]);
+
+	let mut chart = Chart::new(
+		result.hourly.wind_speed_10m.len() + 1,
+		data_range.len() as u32,
+		spacing,
+		padding,
+	);
+
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(5, 5),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: data_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font: font.clone(),
+		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [70, 119, 67]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [118, 118, 62]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [122, 67, 62]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [103, 78, 122]),
+		]),
+		data: result.hourly.wind_gusts_10m.into_iter().map(convert_num),
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [255, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [255, 0, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [188, 66, 255]),
+		]),
+		data: result.hourly.wind_speed_10m.into_iter().map(convert_num),
+	});
+
+	let wind_image = chart.into_canvas();
+
+	let composite = composite(&[
+		temp_image,
+		pop_image,
+		precipitation_image,
+		wind_image,
+		uvi_image,
+	]);
 	let image = make_png(composite);
 
 	interaction
