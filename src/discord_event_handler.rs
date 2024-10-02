@@ -12,6 +12,7 @@ use crate::{
 	geocoding::{self, handle_find_coordinates},
 	hourly_forecast::{self, handle_hourly},
 	reply_shortcuts::ReplyShortcuts,
+	sunrise_sunset::{self, handle_sun},
 	user_locations::{self, handle_set_location, handle_unset_location},
 };
 
@@ -37,6 +38,7 @@ impl EventHandler for DiscordEventHandler {
 				}
 				"hourly" => handle_hourly(&context, &interaction, &self.database, &self.font).await,
 				"daily" => handle_daily(&context, &interaction, &self.database, &self.font).await,
+				"sun" => handle_sun(&context, &interaction, &self.database).await,
 				"set_location" => handle_set_location(&context, &interaction, &self.database).await,
 				"unset_location" => {
 					handle_unset_location(&context, &interaction, &self.database).await
@@ -66,6 +68,7 @@ impl EventHandler for DiscordEventHandler {
 				daily_forecast::create_daily(),
 				user_locations::create_set_location(),
 				user_locations::create_unset_location(),
+				sunrise_sunset::create_sun(),
 			]);
 			for guild in context.cache.guilds() {
 				let commands = guild

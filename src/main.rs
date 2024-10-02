@@ -14,6 +14,7 @@ mod geocoding;
 mod hourly_forecast;
 mod location;
 mod reply_shortcuts;
+mod sunrise_sunset;
 mod user_locations;
 mod util;
 
