@@ -3,9 +3,8 @@ use chrono::{DateTime, Datelike, FixedOffset};
 use graph::{
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
-	generic_graph::{
-		AxisGridLabels, Chart, GradientBars, HorizontalLines, Label, Line, Rgb, TextSegment,
-	},
+	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb},
+	text_box::{TextBox, TextSegment},
 	util::{composite, make_png, next_multiple, previous_and_next_multiple},
 };
 use itertools::Itertools;
@@ -77,7 +76,6 @@ fn day_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 
 const LABEL_SIZE: PxScale = PxScale { x: 15.0, y: 15.0 };
 const AXIS_LABEL_SIZE: PxScale = PxScale { x: 14.0, y: 14.0 };
-const LABEL_DISTANCE_FROM_TOP: i32 = 5;
 
 pub async fn handle_daily(
 	context: &Context,
@@ -97,10 +95,8 @@ pub async fn handle_daily(
 		.map(|time| day_from_timestamp(time, result.utc_offset_seconds))
 		.collect::<Vec<_>>();
 
-	let line_height = LABEL_SIZE.y as u32 + LABEL_DISTANCE_FROM_TOP as u32;
-
 	let padding = Padding {
-		above: 3 + line_height,
+		above: 3,
 		below: 19,
 		left: 21,
 		right: 9,
@@ -124,59 +120,32 @@ pub async fn handle_daily(
 		horizontal: 25,
 		vertical: 3,
 	};
-
+	let label = TextBox::new(
+		&[
+			TextSegment::new("Minimum", Rgb([0, 148, 255])),
+			TextSegment::white(", "),
+			TextSegment::new("maximum", Rgb([255, 0, 0])),
+			TextSegment::white(" and "),
+			TextSegment::new("apparent minimum and maximum", Rgb([0, 170, 33])),
+			TextSegment::white(" temperatures (°C)"),
+		],
+		font.clone(),
+		LABEL_SIZE,
+		(result.daily.temperature_2m_max.len() as u32 - 1) * spacing.horizontal,
+		2,
+	);
 	let mut chart = Chart::new(
 		result.daily.temperature_2m_max.len(),
 		chart_temp_range.len() as u32,
 		spacing,
 		Padding {
-			above: padding.above + line_height * 2,
+			above: padding.above + label.height(),
 			left: padding.left + spacing.horizontal / 2,
 			right: padding.right + spacing.horizontal / 2,
 			..padding
 		},
 	);
-	chart.draw(Label {
-		text_segments: &[
-			TextSegment {
-				text: "Minimum",
-				color: Rgb([0, 148, 255]),
-			},
-			TextSegment {
-				text: ", ",
-				color: Rgb([255, 255, 255]),
-			},
-			TextSegment {
-				text: "maximum",
-				color: Rgb([255, 0, 0]),
-			},
-			TextSegment {
-				text: " and",
-				color: Rgb([255, 255, 255]),
-			},
-		],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP,
-	});
-	chart.draw(Label {
-		text_segments: &[TextSegment {
-			text: "apparent minimum and maximum",
-			color: Rgb([0, 170, 33]),
-		}],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP + line_height as i32,
-	});
-	chart.draw(Label {
-		text_segments: &[TextSegment {
-			text: "temperatures (°C)",
-			color: Rgb([255, 255, 255]),
-		}],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP + line_height as i32 * 2,
-	});
+	chart.draw(label);
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(2, 4),
 		horizontal_intervals: MarkIntervals::new(1, 1),
@@ -229,27 +198,28 @@ pub async fn handle_daily(
 		vertical: 10,
 	};
 
+	let label = TextBox::new(
+		&[
+			TextSegment::new("UV index", Rgb([0, 255, 33])),
+			TextSegment::white(" (and "),
+			TextSegment::new("clear sky UV", Rgb([118, 215, 234])),
+			TextSegment::white(")"),
+		],
+		font.clone(),
+		LABEL_SIZE,
+		(result.daily.uv_index_max.len() as u32 - 1) * spacing.horizontal,
+		2,
+	);
 	let mut chart = Chart::new(
 		result.daily.uv_index_max.len() + 1,
 		uv_range.len() as u32,
 		spacing,
-		padding,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
 	);
-	chart.draw(Label {
-		text_segments: &[
-			TextSegment {
-				text: "UV index",
-				color: Rgb([0, 255, 33]),
-			},
-			TextSegment {
-				text: " (and clear sky UVI)",
-				color: Rgb([255, 255, 255]),
-			},
-		],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP,
-	});
+	chart.draw(label);
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(1, 1),
 		horizontal_intervals: MarkIntervals::new(1, 1),
@@ -260,7 +230,7 @@ pub async fn handle_daily(
 		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
 	});
 	chart.draw(HorizontalLines {
-		colour: Rgb([255, 255, 255]),
+		colour: Rgb([118, 215, 234]),
 		data: result
 			.daily
 			.uv_index_clear_sky_max

@@ -3,10 +3,8 @@ use chrono::{DateTime, FixedOffset, Timelike};
 use graph::{
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
-	generic_graph::{
-		AxisGridLabels, Chart, GradientBars, HorizontalLines, Label, Line, Rgb, SolidBars,
-		TextSegment,
-	},
+	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb, SolidBars},
+	text_box::{TextBox, TextSegment},
 	util::{composite, make_png, next_multiple, previous_and_next_multiple},
 };
 use itertools::Itertools;
@@ -85,7 +83,6 @@ fn hour_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 
 const LABEL_SIZE: PxScale = PxScale { x: 20.0, y: 20.0 };
 const AXIS_LABEL_SIZE: PxScale = PxScale { x: 14.0, y: 14.0 };
-const LABEL_DISTANCE_FROM_TOP: i32 = 5;
 
 pub async fn handle_hourly(
 	context: &Context,
@@ -105,7 +102,7 @@ pub async fn handle_hourly(
 		.collect::<Vec<_>>();
 
 	let padding = Padding {
-		above: 3 + LABEL_SIZE.y as u32 + LABEL_DISTANCE_FROM_TOP as u32,
+		above: 3,
 		below: 19,
 		left: 21,
 		right: 3,
@@ -131,46 +128,34 @@ pub async fn handle_hourly(
 		.unwrap_or((0, 0));
 	let chart_temp_range = previous_and_next_multiple(Range::new(temp_range.0, temp_range.1), 4);
 
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 3,
+	};
+	let label = TextBox::new(
+		&[
+			TextSegment::new("Dry bulb", Rgb([255, 0, 0])),
+			TextSegment::white(", "),
+			TextSegment::new("wet bulb", Rgb([0, 148, 255])),
+			TextSegment::white(" and "),
+			TextSegment::new("apparent", Rgb([0, 255, 33])),
+			TextSegment::white(" temperatures (°C)"),
+		],
+		font.clone(),
+		LABEL_SIZE,
+		(temps.len() - 1) as u32 * spacing.horizontal,
+		2,
+	);
 	let mut chart = Chart::new(
 		temps.len(),
 		chart_temp_range.len() as u32,
-		Spacing {
-			horizontal: 8,
-			vertical: 3,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
 		},
-		padding,
 	);
-	chart.draw(Label {
-		text_segments: &[
-			TextSegment {
-				text: "Dry bulb",
-				color: Rgb([255, 0, 0]),
-			},
-			TextSegment {
-				text: ", ",
-				color: Rgb([255, 255, 255]),
-			},
-			TextSegment {
-				text: "wet bulb",
-				color: Rgb([0, 148, 255]),
-			},
-			TextSegment {
-				text: " and ",
-				color: Rgb([255, 255, 255]),
-			},
-			TextSegment {
-				text: "apparent",
-				color: Rgb([0, 255, 33]),
-			},
-			TextSegment {
-				text: " temperatures (°C)",
-				color: Rgb([255, 255, 255]),
-			},
-		],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP,
-	});
+	chart.draw(label);
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(2, 4),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -211,27 +196,28 @@ pub async fn handle_hourly(
 		vertical: 10,
 	};
 
+	let label = TextBox::new(
+		&[
+			TextSegment::new("UV index", Rgb([0, 255, 33])),
+			TextSegment::white(" (and "),
+			TextSegment::new("clear sky UVI", Rgb([118, 215, 234])),
+			TextSegment::white(")"),
+		],
+		font.clone(),
+		LABEL_SIZE,
+		result.hourly.uv_index.len() as u32 * spacing.horizontal,
+		2,
+	);
 	let mut chart = Chart::new(
 		result.hourly.uv_index.len() + 1,
 		uv_range.len() as u32,
 		spacing,
-		padding,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
 	);
-	chart.draw(Label {
-		text_segments: &[
-			TextSegment {
-				text: "UV index",
-				color: Rgb([0, 255, 33]),
-			},
-			TextSegment {
-				text: " (and clear sky UVI)",
-				color: Rgb([255, 255, 255]),
-			},
-		],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP,
-	});
+	chart.draw(label);
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(1, 1),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -242,7 +228,7 @@ pub async fn handle_hourly(
 		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(HorizontalLines {
-		colour: Rgb([255, 255, 255]),
+		colour: Rgb([118, 215, 234]),
 		data: result
 			.hourly
 			.uv_index_clear_sky
@@ -264,29 +250,28 @@ pub async fn handle_hourly(
 		horizontal: 8,
 		vertical: 1,
 	};
-
 	let probability_range = Range::new(0, 100 * 100);
+
+	let label = TextBox::new(
+		&[
+			TextSegment::white("Probability of "),
+			TextSegment::new("precipitation", Rgb([0, 180, 255])),
+		],
+		font.clone(),
+		LABEL_SIZE,
+		result.hourly.precipitation_probability.len() as u32 * spacing.horizontal,
+		2,
+	);
 	let mut chart = Chart::new(
 		result.hourly.precipitation_probability.len() + 1,
 		probability_range.len() as u32,
 		spacing,
-		padding,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
 	);
-	chart.draw(Label {
-		text_segments: &[
-			TextSegment {
-				text: "Probability of ",
-				color: Rgb([255, 255, 255]),
-			},
-			TextSegment {
-				text: "precipitation",
-				color: Rgb([0, 180, 255]),
-			},
-		],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP,
-	});
+	chart.draw(label);
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(10, 20),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -319,31 +304,27 @@ pub async fn handle_hourly(
 
 	let precipitation_range = Range::new(0, next_multiple(convert_num(max_precipitation), 1));
 
+	let label = TextBox::new(
+		&[
+			TextSegment::white("Amount of "),
+			TextSegment::new("precipitation", Rgb([0, 148, 255])),
+			TextSegment::white(" (mm)"),
+		],
+		font.clone(),
+		LABEL_SIZE,
+		result.hourly.precipitation.len() as u32 * spacing.horizontal,
+		2,
+	);
 	let mut chart = Chart::new(
 		result.hourly.precipitation.len() + 1,
 		precipitation_range.len() as u32,
 		spacing,
-		padding,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
 	);
-	chart.draw(Label {
-		text_segments: &[
-			TextSegment {
-				text: "Amount of ",
-				color: Rgb([255, 255, 255]),
-			},
-			TextSegment {
-				text: "precipitation",
-				color: Rgb([0, 148, 255]),
-			},
-			TextSegment {
-				text: " (mm)",
-				color: Rgb([255, 255, 255]),
-			},
-		],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP,
-	});
+	chart.draw(label);
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(1, 1),
 		horizontal_intervals: MarkIntervals::new(1, 2),
@@ -381,35 +362,28 @@ pub async fn handle_hourly(
 
 	let precipitation_image = chart.into_canvas();
 
+	let label = TextBox::new(
+		&[
+			TextSegment::new("Wind", Rgb([0, 255, 33])),
+			TextSegment::white(" and "),
+			TextSegment::new("gust", Rgb([70, 119, 67])),
+			TextSegment::white(" speed (m/s)"),
+		],
+		font.clone(),
+		LABEL_SIZE,
+		result.hourly.wind_speed_10m.len() as u32 * spacing.horizontal,
+		2,
+	);
 	let mut chart = Chart::new(
 		result.hourly.wind_speed_10m.len() + 1,
 		data_range.len() as u32,
 		spacing,
-		padding,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
 	);
-	chart.draw(Label {
-		text_segments: &[
-			TextSegment {
-				text: "Wind",
-				color: Rgb([0, 255, 33]),
-			},
-			TextSegment {
-				text: " and ",
-				color: Rgb([255, 255, 255]),
-			},
-			TextSegment {
-				text: "gust",
-				color: Rgb([70, 119, 67]),
-			},
-			TextSegment {
-				text: " speed (m/s)",
-				color: Rgb([255, 255, 255]),
-			},
-		],
-		font: font.clone(),
-		font_scale: LABEL_SIZE,
-		distance_from_top: LABEL_DISTANCE_FROM_TOP,
-	});
+	chart.draw(label);
 	chart.draw(AxisGridLabels {
 		vertical_intervals: MarkIntervals::new(5, 5),
 		horizontal_intervals: MarkIntervals::new(1, 2),
