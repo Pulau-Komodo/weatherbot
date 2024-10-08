@@ -74,7 +74,7 @@ fn day_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 		.day() as u8
 }
 
-const LABEL_SIZE: PxScale = PxScale { x: 15.0, y: 15.0 };
+const LABEL_SIZE: PxScale = PxScale { x: 14.0, y: 14.0 };
 const AXIS_LABEL_SIZE: PxScale = PxScale { x: 14.0, y: 14.0 };
 
 pub async fn handle_daily(
@@ -82,6 +82,7 @@ pub async fn handle_daily(
 	interaction: &CommandInteraction,
 	database: &Pool<Sqlite>,
 	font: &FontRef<'static>,
+	header_font: &FontRef<'static>,
 ) -> Result<(), Error> {
 	let client = Client::new();
 	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
@@ -129,7 +130,7 @@ pub async fn handle_daily(
 			TextSegment::new("apparent minimum and maximum", Rgb([0, 170, 33])),
 			TextSegment::white(" temperatures (°C)"),
 		],
-		font.clone(),
+		header_font.clone(),
 		LABEL_SIZE,
 		(result.daily.temperature_2m_max.len() as u32 - 1) * spacing.horizontal,
 		2,
@@ -205,7 +206,7 @@ pub async fn handle_daily(
 			TextSegment::new("clear sky UV", Rgb([118, 215, 234])),
 			TextSegment::white(")"),
 		],
-		font.clone(),
+		header_font.clone(),
 		LABEL_SIZE,
 		(result.daily.uv_index_max.len() as u32 - 1) * spacing.horizontal,
 		2,

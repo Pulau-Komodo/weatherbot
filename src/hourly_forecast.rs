@@ -81,7 +81,7 @@ fn hour_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 		.hour() as u8
 }
 
-const LABEL_SIZE: PxScale = PxScale { x: 20.0, y: 20.0 };
+const LABEL_SIZE: PxScale = PxScale { x: 18.0, y: 18.0 };
 const AXIS_LABEL_SIZE: PxScale = PxScale { x: 14.0, y: 14.0 };
 
 pub async fn handle_hourly(
@@ -89,6 +89,7 @@ pub async fn handle_hourly(
 	interaction: &CommandInteraction,
 	database: &Pool<Sqlite>,
 	font: &FontRef<'static>,
+	header_font: &FontRef<'static>,
 ) -> Result<(), Error> {
 	let client = Client::new();
 	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
@@ -141,7 +142,7 @@ pub async fn handle_hourly(
 			TextSegment::new("apparent", Rgb([0, 255, 33])),
 			TextSegment::white(" temperatures (°C)"),
 		],
-		font.clone(),
+		header_font.clone(),
 		LABEL_SIZE,
 		(temps.len() - 1) as u32 * spacing.horizontal,
 		2,
@@ -203,7 +204,7 @@ pub async fn handle_hourly(
 			TextSegment::new("clear sky UVI", Rgb([118, 215, 234])),
 			TextSegment::white(")"),
 		],
-		font.clone(),
+		header_font.clone(),
 		LABEL_SIZE,
 		result.hourly.uv_index.len() as u32 * spacing.horizontal,
 		2,
@@ -257,7 +258,7 @@ pub async fn handle_hourly(
 			TextSegment::white("Probability of "),
 			TextSegment::new("precipitation", Rgb([0, 180, 255])),
 		],
-		font.clone(),
+		header_font.clone(),
 		LABEL_SIZE,
 		result.hourly.precipitation_probability.len() as u32 * spacing.horizontal,
 		2,
@@ -310,7 +311,7 @@ pub async fn handle_hourly(
 			TextSegment::new("precipitation", Rgb([0, 148, 255])),
 			TextSegment::white(" (mm)"),
 		],
-		font.clone(),
+		header_font.clone(),
 		LABEL_SIZE,
 		result.hourly.precipitation.len() as u32 * spacing.horizontal,
 		2,
@@ -369,7 +370,7 @@ pub async fn handle_hourly(
 			TextSegment::new("gust", Rgb([70, 119, 67])),
 			TextSegment::white(" speed (m/s)"),
 		],
-		font.clone(),
+		header_font.clone(),
 		LABEL_SIZE,
 		result.hourly.wind_speed_10m.len() as u32 * spacing.horizontal,
 		2,

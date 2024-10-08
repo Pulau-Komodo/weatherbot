@@ -19,11 +19,20 @@ use crate::{
 pub struct DiscordEventHandler {
 	database: Pool<Sqlite>,
 	font: ab_glyph::FontRef<'static>,
+	header_font: ab_glyph::FontRef<'static>,
 }
 
 impl DiscordEventHandler {
-	pub fn new(database: Pool<Sqlite>, font: ab_glyph::FontRef<'static>) -> Self {
-		Self { database, font }
+	pub fn new(
+		database: Pool<Sqlite>,
+		font: ab_glyph::FontRef<'static>,
+		header_font: ab_glyph::FontRef<'static>,
+	) -> Self {
+		Self {
+			database,
+			font,
+			header_font,
+		}
 	}
 }
 
@@ -36,8 +45,26 @@ impl EventHandler for DiscordEventHandler {
 				"current" => {
 					handle_current(&context, &interaction, &self.database, &self.font).await
 				}
-				"hourly" => handle_hourly(&context, &interaction, &self.database, &self.font).await,
-				"daily" => handle_daily(&context, &interaction, &self.database, &self.font).await,
+				"hourly" => {
+					handle_hourly(
+						&context,
+						&interaction,
+						&self.database,
+						&self.font,
+						&self.header_font,
+					)
+					.await
+				}
+				"daily" => {
+					handle_daily(
+						&context,
+						&interaction,
+						&self.database,
+						&self.font,
+						&self.header_font,
+					)
+					.await
+				}
 				"sun" => handle_sun(&context, &interaction, &self.database).await,
 				"set_location" => handle_set_location(&context, &interaction, &self.database).await,
 				"unset_location" => {

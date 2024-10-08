@@ -24,12 +24,14 @@ async fn main() {
 
 	let font_data: &[u8] = include_bytes!("../RobotoCondensed-Regular.ttf");
 	let font = ab_glyph::FontRef::try_from_slice(font_data).expect("Failed to read font");
+	let font_data: &[u8] = include_bytes!("../Roboto-Black.ttf");
+	let header_font = ab_glyph::FontRef::try_from_slice(font_data).expect("Failed to read font");
 
 	let discord_token = fs::read_to_string("./token.txt").expect("Could not read token file");
 
 	let _init = Coordinates::parse(r#"1°2'3"N4°5'6"E"#).unwrap();
 
-	let handler = DiscordEventHandler::new(db_pool, font);
+	let handler = DiscordEventHandler::new(db_pool, font, header_font);
 	let mut client = serenity::Client::builder(&discord_token, GatewayIntents::empty())
 		.event_handler(handler)
 		.await
