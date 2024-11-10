@@ -3,7 +3,7 @@ use chrono::{DateTime, Datelike, FixedOffset};
 use graph::{
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
-	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb},
+	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb, SolidBars},
 	text_box::{TextBox, TextSegment},
 	util::{composite, make_png, next_multiple, previous_and_next_multiple},
 };
@@ -29,6 +29,10 @@ struct DailyWeather {
 	temperature_2m_max: Vec<f32>,
 	apparent_temperature_min: Vec<f32>,
 	apparent_temperature_max: Vec<f32>,
+	precipitation_sum: Vec<f32>,
+	precipitation_probability_max: Vec<u8>,
+	wind_speed_10m_max: Vec<f32>,
+	wind_gusts_10m_max: Vec<f32>,
 	uv_index_max: Vec<f32>,
 	uv_index_clear_sky_max: Vec<f32>,
 }
@@ -47,13 +51,21 @@ impl DailyResult {
 	async fn get(coordinates: Coordinates, client: &Client) -> Result<Self, Error> {
 		Ok(client
 			.get("https://api.open-meteo.com/v1/forecast")
-			.query(&[("daily", "temperature_2m_min")])
-			.query(&[("daily", "temperature_2m_max")])
-			.query(&[("daily", "apparent_temperature_min")])
-			.query(&[("daily", "apparent_temperature_max")])
-			.query(&[("daily", "uv_index_max")])
-			.query(&[("daily", "uv_index_clear_sky_max")])
-			.query(&[("timeformat", "unixtime"), ("timezone", "auto")])
+			.query(&[
+				("daily", "temperature_2m_min"),
+				("daily", "temperature_2m_max"),
+				("daily", "apparent_temperature_min"),
+				("daily", "apparent_temperature_max"),
+				("daily", "precipitation_sum"),
+				("daily", "precipitation_probability_max"),
+				("daily", "wind_speed_10m_max"),
+				("daily", "wind_gusts_10m_max"),
+				("daily", "uv_index_max"),
+				("daily", "uv_index_clear_sky_max"),
+				("wind_speed_unit", "ms"),
+				("timeformat", "unixtime"),
+				("timezone", "auto"),
+			])
 			//	.query(&[("forecast_days", 7)])
 			.query(&[
 				("latitude", coordinates.latitude),
@@ -184,7 +196,133 @@ pub async fn handle_daily(
 		data: result.daily.temperature_2m_max.into_iter().map(convert_num),
 		max: chart_temp_range.end(),
 	});
-	let uvi_image = chart.into_canvas();
+	let temp_image = chart.into_canvas();
+
+	let max_precipitation = result
+		.daily
+		.precipitation_sum
+		.iter()
+		.fold(0.0f32, |acc, num| acc.max(*num));
+	let precipitation_range = Range::new(0, next_multiple(convert_num(max_precipitation), 5));
+
+	let spacing = Spacing {
+		horizontal: 25,
+		vertical: 1,
+	};
+	let label = TextBox::new(
+		&[
+			TextSegment::white("Total "),
+			TextSegment::new("precipitation", Rgb([0, 148, 255])),
+			TextSegment::white(" (mm)"),
+		],
+		header_font.clone(),
+		LABEL_SIZE,
+		result.daily.precipitation_sum.len() as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.daily.precipitation_sum.len() + 1,
+		precipitation_range.end() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(25, 25),
+		horizontal_intervals: MarkIntervals::new(1, 1),
+		vertical_label_range: precipitation_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font: font.clone(),
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([0, 148, 255]),
+		data: result
+			.daily
+			.precipitation_sum
+			.iter()
+			.copied()
+			.map(convert_num),
+	});
+	let precipitation_image = chart.into_canvas();
+
+	let max_wind = result
+		.daily
+		.wind_gusts_10m_max
+		.iter()
+		.chain(&result.daily.wind_speed_10m_max)
+		.fold(0.0f32, |acc, num| acc.max(*num));
+	let wind_range = Range::new(0, next_multiple(convert_num(max_wind), 5));
+
+	let spacing = Spacing {
+		horizontal: 25,
+		vertical: 5,
+	};
+	let label = TextBox::new(
+		&[
+			TextSegment::white("Maximum "),
+			TextSegment::new("wind", Rgb([0, 255, 33])),
+			TextSegment::white(" and "),
+			TextSegment::new("gust", Rgb([70, 119, 67])),
+			TextSegment::white(" speeds (m/s)"),
+		],
+		header_font.clone(),
+		LABEL_SIZE,
+		result.daily.wind_gusts_10m_max.len() as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.daily.wind_gusts_10m_max.len() + 1,
+		wind_range.end() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(5, 5),
+		horizontal_intervals: MarkIntervals::new(1, 1),
+		vertical_label_range: wind_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font: font.clone(),
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [70, 119, 67]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [118, 118, 62]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [122, 67, 62]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [103, 78, 122]),
+		]),
+		data: result
+			.daily
+			.wind_gusts_10m_max
+			.iter()
+			.copied()
+			.map(convert_num),
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [255, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [255, 0, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [188, 66, 255]),
+		]),
+		data: result
+			.daily
+			.wind_speed_10m_max
+			.iter()
+			.copied()
+			.map(convert_num),
+	});
+	let wind_image = chart.into_canvas();
 
 	let max_uv = result
 		.daily
@@ -246,8 +384,8 @@ pub async fn handle_daily(
 		]),
 		data: result.daily.uv_index_max.into_iter().map(convert_num),
 	});
-	let temp_image = chart.into_canvas();
-	let composite = composite(&[uvi_image, temp_image]);
+	let uvi_image = chart.into_canvas();
+	let composite = composite(&[temp_image, precipitation_image, wind_image, uvi_image]);
 	let image = make_png(composite);
 
 	interaction
