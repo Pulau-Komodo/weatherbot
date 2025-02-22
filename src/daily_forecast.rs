@@ -66,7 +66,7 @@ impl DailyResult {
 				("timeformat", "unixtime"),
 				("timezone", "auto"),
 			])
-			//	.query(&[("forecast_days", 7)])
+			.query(&[("forecast_days", 14)])
 			.query(&[
 				("latitude", coordinates.latitude),
 				("longitude", coordinates.longitude),
