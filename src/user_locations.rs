@@ -2,7 +2,7 @@ use reqwest::Client;
 use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption,
 };
-use sqlx::{query, Pool, Sqlite};
+use sqlx::{Pool, Sqlite, query};
 
 use crate::{
 	error::Error, geocoding::GeocodingResult, location::Location, reply_shortcuts::ReplyShortcuts,

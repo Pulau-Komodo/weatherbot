@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serenity::{
+	Result as SerenityResult,
 	all::CommandInteraction,
 	async_trait,
 	builder::{
@@ -8,7 +9,6 @@ use serenity::{
 		CreateInteractionResponseMessage,
 	},
 	http::Http,
-	Result as SerenityResult,
 };
 
 #[async_trait]

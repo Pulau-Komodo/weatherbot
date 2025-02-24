@@ -4,7 +4,7 @@ use itertools::Itertools;
 use regex::Regex;
 use reqwest::Client;
 use serenity::all::{CommandInteraction, GuildId, UserId};
-use sqlx::{query, Pool, Sqlite};
+use sqlx::{Pool, Sqlite, query};
 
 use crate::{error::Error, geocoding::GeocodingResult};
 

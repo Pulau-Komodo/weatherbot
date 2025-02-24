@@ -104,7 +104,24 @@ pub async fn handle_current(
 		})
 		.unwrap_or(String::from("unknown"));
 
-	let content = format!("Temperature: {}°C, apparent temperature: {}°C, relative humidity: {}%, precipitation: {}mm, rain: {}mm, showers: {}mm, snowfall: {}cm, weather code: {}, cloud cover: {}%, wind speed: {}km/h, wind direction: {}°, wind gusts: {}km/h, UVI: {}, clear-sky UVI: {}, interval: {}", current.temperature_2m, current.apparent_temperature, current.relative_humidity_2m, current.precipitation, current.rain, current.showers, current.snowfall, weather_code_to_str(current.weather_code).unwrap_or("?"), current.cloud_cover, current.wind_speed_10m, current.wind_direction_10m, current.wind_gusts_10m, current.uv_index, current.uv_index_clear_sky, interval_text);
+	let content = format!(
+		"Temperature: {}°C, apparent temperature: {}°C, relative humidity: {}%, precipitation: {}mm, rain: {}mm, showers: {}mm, snowfall: {}cm, weather code: {}, cloud cover: {}%, wind speed: {}km/h, wind direction: {}°, wind gusts: {}km/h, UVI: {}, clear-sky UVI: {}, interval: {}",
+		current.temperature_2m,
+		current.apparent_temperature,
+		current.relative_humidity_2m,
+		current.precipitation,
+		current.rain,
+		current.showers,
+		current.snowfall,
+		weather_code_to_str(current.weather_code).unwrap_or("?"),
+		current.cloud_cover,
+		current.wind_speed_10m,
+		current.wind_direction_10m,
+		current.wind_gusts_10m,
+		current.uv_index,
+		current.uv_index_clear_sky,
+		interval_text
+	);
 
 	interaction
 		.create_response(
