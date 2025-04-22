@@ -114,9 +114,9 @@ pub async fn handle_hourly(
 		.temperature_2m
 		.into_iter()
 		.zip(result.hourly.apparent_temperature)
-		.zip(result.hourly.relative_humidity_2m)
+		.zip(&result.hourly.relative_humidity_2m)
 		.map(|((temp, apparent), humidity)| {
-			[temp, apparent, wet_bulb_temp(temp, humidity as f32)].map(convert_num)
+			[temp, apparent, wet_bulb_temp(temp, *humidity as f32)].map(convert_num)
 		})
 		.collect();
 
@@ -457,6 +457,7 @@ pub async fn handle_hourly(
 
 	let composite = composite(&[
 		temp_image,
+		humidity_image,
 		pop_image,
 		precipitation_image,
 		wind_image,
