@@ -184,6 +184,46 @@ pub async fn handle_hourly(
 
 	let temp_image = chart.into_canvas();
 
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 1,
+	};
+	let humidity_range = Range::new(0, 100 * 100);
+
+	let label = TextBox::new(
+		&[TextSegment::new("Relative humidity", Rgb([0, 148, 255]))],
+		header_font.clone(),
+		LABEL_SIZE,
+		(result.hourly.relative_humidity_2m.len() - 1) as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.hourly.relative_humidity_2m.len(),
+		humidity_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(10, 20),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: humidity_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: false,
+		font: font.clone(),
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(Line {
+		colour: Rgb([0, 148, 255]),
+		data: result.hourly.relative_humidity_2m.iter().map(|x| x * 100),
+		max: humidity_range.end(),
+	});
+
+	let humidity_image = chart.into_canvas();
+
 	let max_uv = result
 		.hourly
 		.uv_index
