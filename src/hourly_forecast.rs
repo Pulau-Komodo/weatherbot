@@ -74,7 +74,7 @@ impl HourlyResult {
 }
 
 /// Get the hour of the day (from 0 to 23) for a given Unix timestamp, and a timezone offset in seconds.
-fn hour_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
+pub fn hour_from_timestamp(timestamp: i64, offset_seconds: i32) -> u8 {
 	DateTime::from_timestamp(timestamp, 0)
 		.unwrap()
 		.with_timezone(&FixedOffset::east_opt(offset_seconds).unwrap())
