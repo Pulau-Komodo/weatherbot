@@ -6,17 +6,12 @@ use serenity::{
 use sqlx::{Pool, Sqlite};
 
 use crate::{
-	current::{self, handle_current},
+	current,
 	error::Error,
-	forecasts::{
-		daily::{self, handle_daily},
-		hourly::{self, handle_hourly},
-		hourly_soil::{self, handle_hourly_soil},
-	},
-	geocoding::{self, handle_find_coordinates},
+	forecasts::{daily, hourly, hourly_absolute_humidity, hourly_soil},
+	geocoding,
 	reply_shortcuts::ReplyShortcuts,
-	sunrise_sunset::{self, handle_sun},
-	user_locations::{self, handle_set_location, handle_unset_location},
+	sunrise_sunset, user_locations,
 };
 
 pub struct DiscordEventHandler {
@@ -44,12 +39,15 @@ impl EventHandler for DiscordEventHandler {
 	async fn interaction_create(&self, context: Context, interaction: Interaction) {
 		if let Interaction::Command(interaction) = interaction {
 			let result = match interaction.data.name.as_str() {
-				"find_coordinates" => handle_find_coordinates(&context, &interaction).await,
+				"find_coordinates" => {
+					geocoding::handle_find_coordinates(&context, &interaction).await
+				}
 				"current" => {
-					handle_current(&context, &interaction, &self.database, &self.font).await
+					current::handle_current(&context, &interaction, &self.database, &self.font)
+						.await
 				}
 				"hourly" => {
-					handle_hourly(
+					hourly::handle_hourly(
 						&context,
 						&interaction,
 						&self.database,
@@ -59,7 +57,17 @@ impl EventHandler for DiscordEventHandler {
 					.await
 				}
 				"soil_moisture" => {
-					handle_hourly_soil(
+					hourly_soil::handle_hourly_soil(
+						&context,
+						&interaction,
+						&self.database,
+						&self.font,
+						&self.header_font,
+					)
+					.await
+				}
+				"absolute_humidity" => {
+					hourly_absolute_humidity::handle_hourly_absolute_humidity(
 						&context,
 						&interaction,
 						&self.database,
@@ -69,7 +77,7 @@ impl EventHandler for DiscordEventHandler {
 					.await
 				}
 				"daily" => {
-					handle_daily(
+					daily::handle_daily(
 						&context,
 						&interaction,
 						&self.database,
@@ -78,10 +86,14 @@ impl EventHandler for DiscordEventHandler {
 					)
 					.await
 				}
-				"sun" => handle_sun(&context, &interaction, &self.database).await,
-				"set_location" => handle_set_location(&context, &interaction, &self.database).await,
+				"sun" => sunrise_sunset::handle_sun(&context, &interaction, &self.database).await,
+				"set_location" => {
+					user_locations::handle_set_location(&context, &interaction, &self.database)
+						.await
+				}
 				"unset_location" => {
-					handle_unset_location(&context, &interaction, &self.database).await
+					user_locations::handle_unset_location(&context, &interaction, &self.database)
+						.await
 				}
 				name => return println!("Unknown command: {name}"),
 			};
@@ -106,6 +118,7 @@ impl EventHandler for DiscordEventHandler {
 				current::create_current(),
 				hourly::create_hourly(),
 				hourly_soil::create_hourly_soil(),
+				hourly_absolute_humidity::create_hourly_absolute_humidity(),
 				daily::create_daily(),
 				user_locations::create_set_location(),
 				user_locations::create_unset_location(),
