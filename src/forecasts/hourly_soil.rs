@@ -13,7 +13,7 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{
 	error::Error,
-	hourly_forecast::hour_from_timestamp,
+	forecasts::hourly::hour_from_timestamp,
 	location::{Coordinates, Location},
 	util::convert_num,
 };

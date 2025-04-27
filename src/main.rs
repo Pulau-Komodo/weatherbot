@@ -6,13 +6,11 @@ use location::Coordinates;
 use serenity::all::GatewayIntents;
 
 mod current;
-mod daily_forecast;
 mod database;
 mod discord_event_handler;
 mod error;
+mod forecasts;
 mod geocoding;
-mod hourly_forecast;
-mod hourly_soil_forecast;
 mod location;
 mod reply_shortcuts;
 mod sunrise_sunset;

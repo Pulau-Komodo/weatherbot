@@ -7,11 +7,13 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{
 	current::{self, handle_current},
-	daily_forecast::{self, handle_daily},
 	error::Error,
+	forecasts::{
+		daily::{self, handle_daily},
+		hourly::{self, handle_hourly},
+		hourly_soil::{self, handle_hourly_soil},
+	},
 	geocoding::{self, handle_find_coordinates},
-	hourly_forecast::{self, handle_hourly},
-	hourly_soil_forecast::{self, handle_hourly_soil},
 	reply_shortcuts::ReplyShortcuts,
 	sunrise_sunset::{self, handle_sun},
 	user_locations::{self, handle_set_location, handle_unset_location},
@@ -102,9 +104,9 @@ impl EventHandler for DiscordEventHandler {
 			let commands = Vec::from([
 				geocoding::create_find_coordinates(),
 				current::create_current(),
-				hourly_forecast::create_hourly(),
-				hourly_soil_forecast::create_hourly_soil(),
-				daily_forecast::create_daily(),
+				hourly::create_hourly(),
+				hourly_soil::create_hourly_soil(),
+				daily::create_daily(),
 				user_locations::create_set_location(),
 				user_locations::create_unset_location(),
 				sunrise_sunset::create_sun(),
