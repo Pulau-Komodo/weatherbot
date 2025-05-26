@@ -1,6 +1,7 @@
 use ab_glyph::{FontRef, PxScale};
 use chrono::{DateTime, FixedOffset, Timelike};
 use graph::{
+	RgbImage,
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
 	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb, SolidBars},
@@ -98,8 +99,8 @@ pub async fn handle_hourly(
 	let times = result
 		.hourly
 		.time
-		.into_iter()
-		.map(|time| hour_from_timestamp(time, result.utc_offset_seconds))
+		.iter()
+		.map(|time| hour_from_timestamp(*time, result.utc_offset_seconds))
 		.collect::<Vec<_>>();
 
 	let padding = Padding {
@@ -109,14 +110,374 @@ pub async fn handle_hourly(
 		right: 3,
 	};
 
+	let temp_image = temp_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let humidity_image =
+		humidity_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let uvi_image = uvi_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let pop_image = pop_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let precipitation_image =
+		precipitation_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let wind_image = wind_graph(&result, &times, padding, font.clone(), header_font.clone());
+
+	let composite = composite(&[
+		temp_image,
+		humidity_image,
+		pop_image,
+		precipitation_image,
+		wind_image,
+		uvi_image,
+	]);
+	let image = make_png(composite);
+
+	interaction
+		.create_response(
+			context,
+			CreateInteractionResponse::Message(
+				CreateInteractionResponseMessage::new()
+					.add_file(CreateAttachment::bytes(image, "hourly.png")),
+			),
+		)
+		.await?;
+	Ok(())
+}
+
+fn wind_graph(
+	result: &HourlyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let spacing: Spacing = Spacing {
+		horizontal: 8,
+		vertical: 5,
+	};
+
+	let max_chart_speed = next_multiple(
+		result
+			.hourly
+			.wind_speed_10m
+			.iter()
+			.zip(&result.hourly.wind_gusts_10m)
+			.flat_map(|(a, b)| [a, b])
+			.copied()
+			.map(convert_num)
+			.max()
+			.unwrap_or(0),
+		5,
+	);
+
+	let data_range = Range::new(0, max_chart_speed);
+
+	let label = TextBox::new(
+		&[
+			TextSegment::new("Wind", Rgb([0, 255, 33])),
+			TextSegment::white(" and "),
+			TextSegment::new("gust", Rgb([70, 119, 67])),
+			TextSegment::white(" speed (m/s)"),
+		],
+		header_font,
+		LABEL_SIZE,
+		result.hourly.wind_speed_10m.len() as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.hourly.wind_speed_10m.len() + 1,
+		data_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(5, 5),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: data_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font,
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [70, 119, 67]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [118, 118, 62]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [122, 67, 62]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [103, 78, 122]),
+		]),
+		data: result
+			.hourly
+			.wind_gusts_10m
+			.iter()
+			.copied()
+			.map(convert_num),
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [255, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [255, 0, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [188, 66, 255]),
+		]),
+		data: result
+			.hourly
+			.wind_speed_10m
+			.iter()
+			.copied()
+			.map(convert_num),
+	});
+
+	chart.into_canvas()
+}
+
+fn precipitation_graph(
+	result: &HourlyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 16,
+	};
+	let max_precipitation = result
+		.hourly
+		.precipitation
+		.iter()
+		.fold(0.0f32, |acc, num| acc.max(*num));
+
+	let precipitation_range = Range::new(0, next_multiple(convert_num(max_precipitation), 1));
+
+	let label = TextBox::new(
+		&[
+			TextSegment::white("Amount of "),
+			TextSegment::new("precipitation", Rgb([0, 148, 255])),
+			TextSegment::white(" (mm)"),
+		],
+		header_font,
+		LABEL_SIZE,
+		result.hourly.precipitation.len() as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.hourly.precipitation.len() + 1,
+		precipitation_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(1, 1),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: precipitation_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: false,
+		font,
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([0, 148, 255]),
+		data: result.hourly.precipitation.iter().copied().map(convert_num),
+	});
+
+	chart.into_canvas()
+}
+
+fn pop_graph(
+	result: &HourlyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 1,
+	};
+	let probability_range = Range::new(0, 100 * 100);
+
+	let label = TextBox::new(
+		&[
+			TextSegment::white("Probability of "),
+			TextSegment::new("precipitation", Rgb([0, 180, 255])),
+		],
+		header_font,
+		LABEL_SIZE,
+		result.hourly.precipitation_probability.len() as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.hourly.precipitation_probability.len() + 1,
+		probability_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(10, 20),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: probability_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font,
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([0, 180, 255]),
+		data: result
+			.hourly
+			.precipitation_probability
+			.iter()
+			.map(|n| *n as i32 * 100),
+	});
+
+	chart.into_canvas()
+}
+
+fn uvi_graph(
+	result: &HourlyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let max_uv = result
+		.hourly
+		.uv_index
+		.iter()
+		.chain(&result.hourly.uv_index_clear_sky)
+		.fold(0.0f32, |acc, num| acc.max(*num));
+	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), 1));
+
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 10,
+	};
+
+	let label = TextBox::new(
+		&[
+			TextSegment::new("UV index", Rgb([0, 255, 33])),
+			TextSegment::white(" (and "),
+			TextSegment::new("clear sky UVI", Rgb([118, 215, 234])),
+			TextSegment::white(")"),
+		],
+		header_font,
+		LABEL_SIZE,
+		result.hourly.uv_index.len() as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.hourly.uv_index.len() + 1,
+		uv_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(1, 1),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: uv_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font,
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(HorizontalLines {
+		colour: Rgb([118, 215, 234]),
+		data: result
+			.hourly
+			.uv_index_clear_sky
+			.iter()
+			.copied()
+			.map(convert_num),
+	});
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9 / 2, [255, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9, [255, 0, 33]),
+		]),
+		data: result.hourly.uv_index.iter().copied().map(convert_num),
+	});
+
+	chart.into_canvas()
+}
+
+fn humidity_graph(
+	result: &HourlyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let spacing = Spacing {
+		horizontal: 8,
+		vertical: 1,
+	};
+	let humidity_range = Range::new(0, 100 * 100);
+
+	let label = TextBox::new(
+		&[TextSegment::new("Relative humidity", Rgb([0, 148, 255]))],
+		header_font,
+		LABEL_SIZE,
+		(result.hourly.relative_humidity_2m.len() - 1) as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.hourly.relative_humidity_2m.len(),
+		humidity_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(10, 20),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: humidity_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: false,
+		font,
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(Line {
+		colour: Rgb([0, 148, 255]),
+		data: result.hourly.relative_humidity_2m.iter().map(|x| x * 100),
+		max: humidity_range.end(),
+	});
+
+	chart.into_canvas()
+}
+
+fn temp_graph(
+	result: &HourlyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
 	let temps: Vec<_> = result
 		.hourly
 		.temperature_2m
-		.into_iter()
-		.zip(result.hourly.apparent_temperature)
+		.iter()
+		.zip(&result.hourly.apparent_temperature)
 		.zip(&result.hourly.relative_humidity_2m)
 		.map(|((temp, apparent), humidity)| {
-			[temp, apparent, wet_bulb_temp(temp, *humidity as f32)].map(convert_num)
+			[*temp, *apparent, wet_bulb_temp(*temp, *humidity as f32)].map(convert_num)
 		})
 		.collect();
 
@@ -142,7 +503,7 @@ pub async fn handle_hourly(
 			TextSegment::new("apparent", Rgb([0, 255, 33])),
 			TextSegment::white(" temperatures (°C)"),
 		],
-		header_font.clone(),
+		header_font,
 		LABEL_SIZE,
 		(temps.len() - 1) as u32 * spacing.horizontal,
 		2,
@@ -163,7 +524,7 @@ pub async fn handle_hourly(
 		vertical_label_range: chart_temp_range,
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: false,
-		font: font.clone(),
+		font,
 		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(Line {
@@ -181,300 +542,7 @@ pub async fn handle_hourly(
 		data: temps.iter().map(|[temp, _, _]| temp).copied(),
 		max: chart_temp_range.end(),
 	});
-
-	let temp_image = chart.into_canvas();
-
-	let spacing = Spacing {
-		horizontal: 8,
-		vertical: 1,
-	};
-	let humidity_range = Range::new(0, 100 * 100);
-
-	let label = TextBox::new(
-		&[TextSegment::new("Relative humidity", Rgb([0, 148, 255]))],
-		header_font.clone(),
-		LABEL_SIZE,
-		(result.hourly.relative_humidity_2m.len() - 1) as u32 * spacing.horizontal,
-		2,
-	);
-	let mut chart = Chart::new(
-		result.hourly.relative_humidity_2m.len(),
-		humidity_range.len() as u32,
-		spacing,
-		Padding {
-			above: padding.above + label.height(),
-			..padding
-		},
-	);
-	chart.draw(label);
-	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(10, 20),
-		horizontal_intervals: MarkIntervals::new(1, 2),
-		vertical_label_range: humidity_range,
-		horizontal_labels: times.iter().copied(),
-		horizontal_labels_centered: false,
-		font: font.clone(),
-		font_scale: AXIS_LABEL_SIZE,
-	});
-	chart.draw(Line {
-		colour: Rgb([0, 148, 255]),
-		data: result.hourly.relative_humidity_2m.iter().map(|x| x * 100),
-		max: humidity_range.end(),
-	});
-
-	let humidity_image = chart.into_canvas();
-
-	let max_uv = result
-		.hourly
-		.uv_index
-		.iter()
-		.chain(&result.hourly.uv_index_clear_sky)
-		.fold(0.0f32, |acc, num| acc.max(*num));
-	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), 1));
-
-	let spacing = Spacing {
-		horizontal: 8,
-		vertical: 10,
-	};
-
-	let label = TextBox::new(
-		&[
-			TextSegment::new("UV index", Rgb([0, 255, 33])),
-			TextSegment::white(" (and "),
-			TextSegment::new("clear sky UVI", Rgb([118, 215, 234])),
-			TextSegment::white(")"),
-		],
-		header_font.clone(),
-		LABEL_SIZE,
-		result.hourly.uv_index.len() as u32 * spacing.horizontal,
-		2,
-	);
-	let mut chart = Chart::new(
-		result.hourly.uv_index.len() + 1,
-		uv_range.len() as u32,
-		spacing,
-		Padding {
-			above: padding.above + label.height(),
-			..padding
-		},
-	);
-	chart.draw(label);
-	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(1, 1),
-		horizontal_intervals: MarkIntervals::new(1, 2),
-		vertical_label_range: uv_range,
-		horizontal_labels: times.iter().copied(),
-		horizontal_labels_centered: true,
-		font: font.clone(),
-		font_scale: AXIS_LABEL_SIZE,
-	});
-	chart.draw(HorizontalLines {
-		colour: Rgb([118, 215, 234]),
-		data: result
-			.hourly
-			.uv_index_clear_sky
-			.into_iter()
-			.map(convert_num),
-	});
-	chart.draw(GradientBars {
-		gradient: MultiPointGradient::new(vec![
-			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 9 / 2, [255, 255, 33]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 9, [255, 0, 33]),
-		]),
-		data: result.hourly.uv_index.into_iter().map(convert_num),
-	});
-
-	let uvi_image = chart.into_canvas();
-
-	let spacing = Spacing {
-		horizontal: 8,
-		vertical: 1,
-	};
-	let probability_range = Range::new(0, 100 * 100);
-
-	let label = TextBox::new(
-		&[
-			TextSegment::white("Probability of "),
-			TextSegment::new("precipitation", Rgb([0, 180, 255])),
-		],
-		header_font.clone(),
-		LABEL_SIZE,
-		result.hourly.precipitation_probability.len() as u32 * spacing.horizontal,
-		2,
-	);
-	let mut chart = Chart::new(
-		result.hourly.precipitation_probability.len() + 1,
-		probability_range.len() as u32,
-		spacing,
-		Padding {
-			above: padding.above + label.height(),
-			..padding
-		},
-	);
-	chart.draw(label);
-	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(10, 20),
-		horizontal_intervals: MarkIntervals::new(1, 2),
-		vertical_label_range: probability_range,
-		horizontal_labels: times.iter().copied(),
-		horizontal_labels_centered: true,
-		font: font.clone(),
-		font_scale: AXIS_LABEL_SIZE,
-	});
-	chart.draw(SolidBars {
-		colour: Rgb([0, 180, 255]),
-		data: result
-			.hourly
-			.precipitation_probability
-			.into_iter()
-			.map(|n| n as i32 * 100),
-	});
-
-	let pop_image = chart.into_canvas();
-
-	let spacing = Spacing {
-		horizontal: 8,
-		vertical: 16,
-	};
-	let max_precipitation = result
-		.hourly
-		.precipitation
-		.iter()
-		.fold(0.0f32, |acc, num| acc.max(*num));
-
-	let precipitation_range = Range::new(0, next_multiple(convert_num(max_precipitation), 1));
-
-	let label = TextBox::new(
-		&[
-			TextSegment::white("Amount of "),
-			TextSegment::new("precipitation", Rgb([0, 148, 255])),
-			TextSegment::white(" (mm)"),
-		],
-		header_font.clone(),
-		LABEL_SIZE,
-		result.hourly.precipitation.len() as u32 * spacing.horizontal,
-		2,
-	);
-	let mut chart = Chart::new(
-		result.hourly.precipitation.len() + 1,
-		precipitation_range.len() as u32,
-		spacing,
-		Padding {
-			above: padding.above + label.height(),
-			..padding
-		},
-	);
-	chart.draw(label);
-	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(1, 1),
-		horizontal_intervals: MarkIntervals::new(1, 2),
-		vertical_label_range: precipitation_range,
-		horizontal_labels: times.iter().copied(),
-		horizontal_labels_centered: false,
-		font: font.clone(),
-		font_scale: AXIS_LABEL_SIZE,
-	});
-	chart.draw(SolidBars {
-		colour: Rgb([0, 148, 255]),
-		data: result.hourly.precipitation.into_iter().map(convert_num),
-	});
-
-	let spacing: Spacing = Spacing {
-		horizontal: 8,
-		vertical: 5,
-	};
-
-	let max_chart_speed = next_multiple(
-		result
-			.hourly
-			.wind_speed_10m
-			.iter()
-			.zip(&result.hourly.wind_gusts_10m)
-			.flat_map(|(a, b)| [a, b])
-			.copied()
-			.map(convert_num)
-			.max()
-			.unwrap_or(0) as i32,
-		5,
-	);
-
-	let data_range = Range::new(0, max_chart_speed);
-
-	let precipitation_image = chart.into_canvas();
-
-	let label = TextBox::new(
-		&[
-			TextSegment::new("Wind", Rgb([0, 255, 33])),
-			TextSegment::white(" and "),
-			TextSegment::new("gust", Rgb([70, 119, 67])),
-			TextSegment::white(" speed (m/s)"),
-		],
-		header_font.clone(),
-		LABEL_SIZE,
-		result.hourly.wind_speed_10m.len() as u32 * spacing.horizontal,
-		2,
-	);
-	let mut chart = Chart::new(
-		result.hourly.wind_speed_10m.len() + 1,
-		data_range.len() as u32,
-		spacing,
-		Padding {
-			above: padding.above + label.height(),
-			..padding
-		},
-	);
-	chart.draw(label);
-	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(5, 5),
-		horizontal_intervals: MarkIntervals::new(1, 2),
-		vertical_label_range: data_range,
-		horizontal_labels: times.iter().copied(),
-		horizontal_labels_centered: true,
-		font: font.clone(),
-		font_scale: AXIS_LABEL_SIZE,
-	});
-	chart.draw(GradientBars {
-		gradient: MultiPointGradient::new(vec![
-			GradientPoint::from_rgb(padding.below, [70, 119, 67]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [118, 118, 62]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [122, 67, 62]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [103, 78, 122]),
-		]),
-		data: result.hourly.wind_gusts_10m.into_iter().map(convert_num),
-	});
-	chart.draw(GradientBars {
-		gradient: MultiPointGradient::new(vec![
-			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 7, [255, 255, 33]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 14, [255, 0, 33]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 21, [188, 66, 255]),
-		]),
-		data: result.hourly.wind_speed_10m.into_iter().map(convert_num),
-	});
-
-	let wind_image = chart.into_canvas();
-
-	let composite = composite(&[
-		temp_image,
-		humidity_image,
-		pop_image,
-		precipitation_image,
-		wind_image,
-		uvi_image,
-	]);
-	let image = make_png(composite);
-
-	interaction
-		.create_response(
-			context,
-			CreateInteractionResponse::Message(
-				CreateInteractionResponseMessage::new()
-					.add_file(CreateAttachment::bytes(image, "hourly.png")),
-			),
-		)
-		.await?;
-	Ok(())
+	chart.into_canvas()
 }
 
 pub fn create_hourly() -> CreateCommand {
