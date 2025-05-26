@@ -148,6 +148,7 @@ fn wind_graph(
 	font: FontRef<'static>,
 	header_font: FontRef<'static>,
 ) -> RgbImage {
+	let label_interval = 5;
 	let spacing: Spacing = Spacing {
 		horizontal: 8,
 		vertical: 5,
@@ -164,7 +165,7 @@ fn wind_graph(
 			.map(convert_num)
 			.max()
 			.unwrap_or(0),
-		5,
+		label_interval as i32,
 	);
 
 	let data_range = Range::new(0, max_chart_speed);
@@ -192,7 +193,7 @@ fn wind_graph(
 	);
 	chart.draw(label);
 	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(5, 5),
+		vertical_intervals: MarkIntervals::new(5, label_interval),
 		horizontal_intervals: MarkIntervals::new(1, 2),
 		vertical_label_range: data_range,
 		horizontal_labels: times.iter().copied(),
@@ -239,6 +240,7 @@ fn precipitation_graph(
 	font: FontRef<'static>,
 	header_font: FontRef<'static>,
 ) -> RgbImage {
+	let label_interval = 1;
 	let spacing = Spacing {
 		horizontal: 8,
 		vertical: 16,
@@ -249,7 +251,10 @@ fn precipitation_graph(
 		.iter()
 		.fold(0.0f32, |acc, num| acc.max(*num));
 
-	let precipitation_range = Range::new(0, next_multiple(convert_num(max_precipitation), 1));
+	let precipitation_range = Range::new(
+		0,
+		next_multiple(convert_num(max_precipitation), label_interval as i32),
+	);
 
 	let label = TextBox::new(
 		&[
@@ -273,7 +278,7 @@ fn precipitation_graph(
 	);
 	chart.draw(label);
 	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(1, 1),
+		vertical_intervals: MarkIntervals::new(1, label_interval),
 		horizontal_intervals: MarkIntervals::new(1, 2),
 		vertical_label_range: precipitation_range,
 		horizontal_labels: times.iter().copied(),
@@ -350,13 +355,15 @@ fn uvi_graph(
 	font: FontRef<'static>,
 	header_font: FontRef<'static>,
 ) -> RgbImage {
+	let label_interval = 1;
+
 	let max_uv = result
 		.hourly
 		.uv_index
 		.iter()
 		.chain(&result.hourly.uv_index_clear_sky)
 		.fold(0.0f32, |acc, num| acc.max(*num));
-	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), 1));
+	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), label_interval as i32));
 
 	let spacing = Spacing {
 		horizontal: 8,
@@ -386,7 +393,7 @@ fn uvi_graph(
 	);
 	chart.draw(label);
 	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(1, 1),
+		vertical_intervals: MarkIntervals::new(1, label_interval),
 		horizontal_intervals: MarkIntervals::new(1, 2),
 		vertical_label_range: uv_range,
 		horizontal_labels: times.iter().copied(),
@@ -481,6 +488,8 @@ fn temp_graph(
 		})
 		.collect();
 
+	let label_interval = 4;
+
 	let temp_range = temps
 		.iter()
 		.flatten()
@@ -488,7 +497,10 @@ fn temp_graph(
 		.minmax()
 		.into_option()
 		.unwrap_or((0, 0));
-	let chart_temp_range = previous_and_next_multiple(Range::new(temp_range.0, temp_range.1), 4);
+	let chart_temp_range = previous_and_next_multiple(
+		Range::new(temp_range.0, temp_range.1),
+		label_interval as i32,
+	);
 
 	let spacing = Spacing {
 		horizontal: 8,
@@ -519,7 +531,7 @@ fn temp_graph(
 	);
 	chart.draw(label);
 	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(2, 4),
+		vertical_intervals: MarkIntervals::new(2, label_interval),
 		horizontal_intervals: MarkIntervals::new(1, 2),
 		vertical_label_range: chart_temp_range,
 		horizontal_labels: times.iter().copied(),

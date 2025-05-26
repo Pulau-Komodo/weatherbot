@@ -1,6 +1,7 @@
 use ab_glyph::{FontRef, PxScale};
 use chrono::{DateTime, Datelike, FixedOffset};
 use graph::{
+	RgbImage,
 	common_types::{GradientPoint, MultiPointGradient, Range},
 	drawing::{MarkIntervals, Padding, Spacing},
 	generic_graph::{AxisGridLabels, Chart, GradientBars, HorizontalLines, Line, Rgb, SolidBars},
@@ -104,8 +105,8 @@ pub async fn handle_daily(
 	let times = result
 		.daily
 		.time
-		.into_iter()
-		.map(|time| day_from_timestamp(time, result.utc_offset_seconds))
+		.iter()
+		.map(|time| day_from_timestamp(*time, result.utc_offset_seconds))
 		.collect::<Vec<_>>();
 
 	let padding = Padding {
@@ -115,114 +116,64 @@ pub async fn handle_daily(
 		right: 9,
 	};
 
-	let (&min, &max) = result
-		.daily
-		.apparent_temperature_max
-		.iter()
-		.chain(&result.daily.apparent_temperature_min)
-		.chain(&result.daily.temperature_2m_max)
-		.chain(&result.daily.temperature_2m_min)
-		.minmax()
-		.into_option()
-		.unwrap_or((&0.0, &0.0));
-	let temp_range = Range::new(convert_num(min), convert_num(max));
-	let chart_temp_range =
-		previous_and_next_multiple(Range::new(temp_range.start(), temp_range.end()), 4);
+	let temp_image = temperature_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let precipitation_image =
+		precipitation_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let wind_image = wind_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let uvi_image = uv_graph(&result, &times, padding, font.clone(), header_font.clone());
 
-	let spacing = Spacing {
-		horizontal: 25,
-		vertical: 3,
-	};
-	let label = TextBox::new(
-		&[
-			TextSegment::new("Minimum", Rgb([0, 148, 255])),
-			TextSegment::white(", "),
-			TextSegment::new("maximum", Rgb([255, 0, 0])),
-			TextSegment::white(" and "),
-			TextSegment::new("apparent minimum and maximum", Rgb([0, 170, 33])),
-			TextSegment::white(" temperatures (°C)"),
-		],
-		header_font.clone(),
-		LABEL_SIZE,
-		(result.daily.temperature_2m_max.len() as u32 - 1) * spacing.horizontal,
-		2,
-	);
-	let mut chart = Chart::new(
-		result.daily.temperature_2m_max.len(),
-		chart_temp_range.len() as u32,
-		spacing,
-		Padding {
-			above: padding.above + label.height(),
-			left: padding.left + spacing.horizontal / 2,
-			right: padding.right + spacing.horizontal / 2,
-			..padding
-		},
-	);
-	chart.draw(label);
-	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(2, 4),
-		horizontal_intervals: MarkIntervals::new(1, 1),
-		vertical_label_range: chart_temp_range,
-		horizontal_labels: times.iter().copied(),
-		horizontal_labels_centered: false,
-		font: font.clone(),
-		font_scale: AXIS_LABEL_SIZE,
-	});
-	chart.draw(Line {
-		colour: Rgb([0, 170, 33]),
-		data: result
-			.daily
-			.apparent_temperature_min
-			.into_iter()
-			.map(convert_num),
-		max: chart_temp_range.end(),
-	});
-	chart.draw(Line {
-		colour: Rgb([0, 170, 33]),
-		data: result
-			.daily
-			.apparent_temperature_max
-			.into_iter()
-			.map(convert_num),
-		max: chart_temp_range.end(),
-	});
-	chart.draw(Line {
-		colour: Rgb([0, 148, 255]),
-		data: result.daily.temperature_2m_min.into_iter().map(convert_num),
-		max: chart_temp_range.end(),
-	});
-	chart.draw(Line {
-		colour: Rgb([255, 0, 0]),
-		data: result.daily.temperature_2m_max.into_iter().map(convert_num),
-		max: chart_temp_range.end(),
-	});
-	let temp_image = chart.into_canvas();
+	let composite = composite(&[temp_image, precipitation_image, wind_image, uvi_image]);
+	let image = make_png(composite);
 
-	let max_precipitation = result
+	interaction
+		.create_response(
+			context,
+			CreateInteractionResponse::Message(
+				CreateInteractionResponseMessage::new()
+					.add_file(CreateAttachment::bytes(image, "daily.png")),
+			),
+		)
+		.await?;
+	Ok(())
+}
+
+fn uv_graph(
+	result: &DailyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let label_interval = 1;
+
+	let max_uv = result
 		.daily
-		.precipitation_sum
+		.uv_index_max
 		.iter()
+		.chain(&result.daily.uv_index_clear_sky_max)
 		.fold(0.0f32, |acc, num| acc.max(*num));
-	let precipitation_range = Range::new(0, next_multiple(convert_num(max_precipitation), 5));
+	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), label_interval as i32));
 
 	let spacing = Spacing {
 		horizontal: 25,
-		vertical: 1,
+		vertical: 10,
 	};
+
 	let label = TextBox::new(
 		&[
-			TextSegment::white("Total "),
-			TextSegment::new("precipitation", Rgb([0, 148, 255])),
-			TextSegment::white(" (mm)"),
+			TextSegment::new("UV index", Rgb([0, 255, 33])),
+			TextSegment::white(" (and "),
+			TextSegment::new("clear sky UV", Rgb([118, 215, 234])),
+			TextSegment::white(")"),
 		],
-		header_font.clone(),
+		header_font,
 		LABEL_SIZE,
-		result.daily.precipitation_sum.len() as u32 * spacing.horizontal,
+		(result.daily.uv_index_max.len() as u32 - 1) * spacing.horizontal,
 		2,
 	);
 	let mut chart = Chart::new(
-		result.daily.precipitation_sum.len() + 1,
-		precipitation_range.end() as u32,
+		result.daily.uv_index_max.len() + 1,
+		uv_range.len() as u32,
 		spacing,
 		Padding {
 			above: padding.above + label.height(),
@@ -231,24 +182,43 @@ pub async fn handle_daily(
 	);
 	chart.draw(label);
 	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(25, 25),
+		vertical_intervals: MarkIntervals::new(1, label_interval),
 		horizontal_intervals: MarkIntervals::new(1, 1),
-		vertical_label_range: precipitation_range,
+		vertical_label_range: uv_range,
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: true,
-		font: font.clone(),
-		font_scale: AXIS_LABEL_SIZE,
+		font,
+		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
 	});
-	chart.draw(SolidBars {
-		colour: Rgb([0, 148, 255]),
+	chart.draw(HorizontalLines {
+		colour: Rgb([118, 215, 234]),
 		data: result
 			.daily
-			.precipitation_sum
+			.uv_index_clear_sky_max
 			.iter()
 			.copied()
 			.map(convert_num),
 	});
-	let precipitation_image = chart.into_canvas();
+	chart.draw(GradientBars {
+		gradient: MultiPointGradient::new(vec![
+			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9 / 2, [255, 255, 33]),
+			GradientPoint::from_rgb(padding.below + spacing.vertical * 9, [255, 0, 33]),
+		]),
+		data: result.daily.uv_index_max.iter().copied().map(convert_num),
+	});
+
+	chart.into_canvas()
+}
+
+fn wind_graph(
+	result: &DailyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let label_interval = 5;
 
 	let max_wind = result
 		.daily
@@ -256,7 +226,10 @@ pub async fn handle_daily(
 		.iter()
 		.chain(&result.daily.wind_speed_10m_max)
 		.fold(0.0f32, |acc, num| acc.max(*num));
-	let wind_range = Range::new(0, next_multiple(convert_num(max_wind), 5));
+	let wind_range = Range::new(
+		0,
+		next_multiple(convert_num(max_wind), label_interval as i32),
+	);
 
 	let spacing = Spacing {
 		horizontal: 25,
@@ -270,7 +243,7 @@ pub async fn handle_daily(
 			TextSegment::new("gust", Rgb([70, 119, 67])),
 			TextSegment::white(" speeds (m/s)"),
 		],
-		header_font.clone(),
+		header_font,
 		LABEL_SIZE,
 		result.daily.wind_gusts_10m_max.len() as u32 * spacing.horizontal,
 		2,
@@ -286,12 +259,12 @@ pub async fn handle_daily(
 	);
 	chart.draw(label);
 	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(5, 5),
+		vertical_intervals: MarkIntervals::new(5, label_interval),
 		horizontal_intervals: MarkIntervals::new(1, 1),
 		vertical_label_range: wind_range,
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: true,
-		font: font.clone(),
+		font,
 		font_scale: AXIS_LABEL_SIZE,
 	});
 	chart.draw(GradientBars {
@@ -322,36 +295,47 @@ pub async fn handle_daily(
 			.copied()
 			.map(convert_num),
 	});
-	let wind_image = chart.into_canvas();
 
-	let max_uv = result
+	chart.into_canvas()
+}
+
+fn precipitation_graph(
+	result: &DailyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let label_interval = 25;
+
+	let max_precipitation = result
 		.daily
-		.uv_index_max
+		.precipitation_sum
 		.iter()
-		.chain(&result.daily.uv_index_clear_sky_max)
 		.fold(0.0f32, |acc, num| acc.max(*num));
-	let uv_range = Range::new(0, next_multiple(convert_num(max_uv), 1));
+	let precipitation_range = Range::new(
+		0,
+		next_multiple(convert_num(max_precipitation), label_interval as i32),
+	);
 
 	let spacing = Spacing {
 		horizontal: 25,
-		vertical: 10,
+		vertical: 1,
 	};
-
 	let label = TextBox::new(
 		&[
-			TextSegment::new("UV index", Rgb([0, 255, 33])),
-			TextSegment::white(" (and "),
-			TextSegment::new("clear sky UV", Rgb([118, 215, 234])),
-			TextSegment::white(")"),
+			TextSegment::white("Total "),
+			TextSegment::new("precipitation", Rgb([0, 148, 255])),
+			TextSegment::white(" (mm)"),
 		],
-		header_font.clone(),
+		header_font,
 		LABEL_SIZE,
-		(result.daily.uv_index_max.len() as u32 - 1) * spacing.horizontal,
+		result.daily.precipitation_sum.len() as u32 * spacing.horizontal,
 		2,
 	);
 	let mut chart = Chart::new(
-		result.daily.uv_index_max.len() + 1,
-		uv_range.len() as u32,
+		result.daily.precipitation_sum.len() + 1,
+		precipitation_range.end() as u32,
 		spacing,
 		Padding {
 			above: padding.above + label.height(),
@@ -360,44 +344,132 @@ pub async fn handle_daily(
 	);
 	chart.draw(label);
 	chart.draw(AxisGridLabels {
-		vertical_intervals: MarkIntervals::new(1, 1),
+		vertical_intervals: MarkIntervals::new(25, label_interval),
 		horizontal_intervals: MarkIntervals::new(1, 1),
-		vertical_label_range: uv_range,
+		vertical_label_range: precipitation_range,
 		horizontal_labels: times.iter().copied(),
 		horizontal_labels_centered: true,
-		font: font.clone(),
-		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+		font,
+		font_scale: AXIS_LABEL_SIZE,
 	});
-	chart.draw(HorizontalLines {
-		colour: Rgb([118, 215, 234]),
+	chart.draw(SolidBars {
+		colour: Rgb([0, 148, 255]),
 		data: result
 			.daily
-			.uv_index_clear_sky_max
-			.into_iter()
+			.precipitation_sum
+			.iter()
+			.copied()
 			.map(convert_num),
 	});
-	chart.draw(GradientBars {
-		gradient: MultiPointGradient::new(vec![
-			GradientPoint::from_rgb(padding.below, [0, 255, 33]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 9 / 2, [255, 255, 33]),
-			GradientPoint::from_rgb(padding.below + spacing.vertical * 9, [255, 0, 33]),
-		]),
-		data: result.daily.uv_index_max.into_iter().map(convert_num),
-	});
-	let uvi_image = chart.into_canvas();
-	let composite = composite(&[temp_image, precipitation_image, wind_image, uvi_image]);
-	let image = make_png(composite);
+	chart.into_canvas()
+}
 
-	interaction
-		.create_response(
-			context,
-			CreateInteractionResponse::Message(
-				CreateInteractionResponseMessage::new()
-					.add_file(CreateAttachment::bytes(image, "daily.png")),
-			),
-		)
-		.await?;
-	Ok(())
+fn temperature_graph(
+	result: &DailyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let label_interval = 4;
+
+	let (&min, &max) = result
+		.daily
+		.apparent_temperature_max
+		.iter()
+		.chain(&result.daily.apparent_temperature_min)
+		.chain(&result.daily.temperature_2m_max)
+		.chain(&result.daily.temperature_2m_min)
+		.minmax()
+		.into_option()
+		.unwrap_or((&0.0, &0.0));
+	let temp_range = Range::new(convert_num(min), convert_num(max));
+	let chart_temp_range = previous_and_next_multiple(
+		Range::new(temp_range.start(), temp_range.end()),
+		label_interval as i32,
+	);
+
+	let spacing = Spacing {
+		horizontal: 25,
+		vertical: 3,
+	};
+	let label = TextBox::new(
+		&[
+			TextSegment::new("Minimum", Rgb([0, 148, 255])),
+			TextSegment::white(", "),
+			TextSegment::new("maximum", Rgb([255, 0, 0])),
+			TextSegment::white(" and "),
+			TextSegment::new("apparent minimum and maximum", Rgb([0, 170, 33])),
+			TextSegment::white(" temperatures (°C)"),
+		],
+		header_font,
+		LABEL_SIZE,
+		(result.daily.temperature_2m_max.len() as u32 - 1) * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.daily.temperature_2m_max.len(),
+		chart_temp_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			left: padding.left + spacing.horizontal / 2,
+			right: padding.right + spacing.horizontal / 2,
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(2, label_interval),
+		horizontal_intervals: MarkIntervals::new(1, 1),
+		vertical_label_range: chart_temp_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: false,
+		font,
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(Line {
+		colour: Rgb([0, 170, 33]),
+		data: result
+			.daily
+			.apparent_temperature_min
+			.iter()
+			.copied()
+			.map(convert_num),
+		max: chart_temp_range.end(),
+	});
+	chart.draw(Line {
+		colour: Rgb([0, 170, 33]),
+		data: result
+			.daily
+			.apparent_temperature_max
+			.iter()
+			.copied()
+			.map(convert_num),
+		max: chart_temp_range.end(),
+	});
+	chart.draw(Line {
+		colour: Rgb([0, 148, 255]),
+		data: result
+			.daily
+			.temperature_2m_min
+			.iter()
+			.copied()
+			.map(convert_num),
+		max: chart_temp_range.end(),
+	});
+	chart.draw(Line {
+		colour: Rgb([255, 0, 0]),
+		data: result
+			.daily
+			.temperature_2m_max
+			.iter()
+			.copied()
+			.map(convert_num),
+		max: chart_temp_range.end(),
+	});
+
+	chart.into_canvas()
 }
 
 pub fn create_daily() -> CreateCommand {
