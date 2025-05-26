@@ -832,7 +832,7 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 [[package]]
 name = "graph"
 version = "0.1.0"
-source = "git+https://github.com/Pulau-Komodo/graph.git?rev=c9aa21dd4c17353f5f054259c65014062d566fb9#c9aa21dd4c17353f5f054259c65014062d566fb9"
+source = "git+https://github.com/Pulau-Komodo/graph.git?rev=0bea23a3b96b01795fbcdd819d47c6ba5f73cfcd#0bea23a3b96b01795fbcdd819d47c6ba5f73cfcd"
 dependencies = [
  "ab_glyph",
  "image",
