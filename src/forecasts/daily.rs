@@ -31,6 +31,8 @@ struct DailyWeather {
 	apparent_temperature_min: Vec<f32>,
 	apparent_temperature_max: Vec<f32>,
 	precipitation_sum: Vec<f32>,
+	precipitation_probability_min: Vec<u8>,
+	precipitation_probability_mean: Vec<u8>,
 	precipitation_probability_max: Vec<u8>,
 	wind_speed_10m_max: Vec<f32>,
 	wind_gusts_10m_max: Vec<f32>,
@@ -58,6 +60,8 @@ impl DailyResult {
 				("daily", "apparent_temperature_min"),
 				("daily", "apparent_temperature_max"),
 				("daily", "precipitation_sum"),
+				("daily", "precipitation_probability_min"),
+				("daily", "precipitation_probability_mean"),
 				("daily", "precipitation_probability_max"),
 				("daily", "wind_speed_10m_max"),
 				("daily", "wind_gusts_10m_max"),
@@ -121,8 +125,15 @@ pub async fn handle_daily(
 		precipitation_graph(&result, &times, padding, font.clone(), header_font.clone());
 	let wind_image = wind_graph(&result, &times, padding, font.clone(), header_font.clone());
 	let uvi_image = uv_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let pop_image = pop_graph(&result, &times, padding, font.clone(), header_font.clone());
 
-	let composite = composite(&[temp_image, precipitation_image, wind_image, uvi_image]);
+	let composite = composite(&[
+		temp_image,
+		pop_image,
+		precipitation_image,
+		wind_image,
+		uvi_image,
+	]);
 	let image = make_png(composite);
 
 	interaction
@@ -361,6 +372,80 @@ fn precipitation_graph(
 			.copied()
 			.map(convert_num),
 	});
+	chart.into_canvas()
+}
+
+fn pop_graph(
+	result: &DailyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let spacing = Spacing {
+		horizontal: 25,
+		vertical: 1,
+	};
+	let probability_range = Range::new(0, 100 * 100);
+
+	let label = TextBox::new(
+		&[
+			TextSegment::new("Maximum", Rgb([0, 90, 255])),
+			TextSegment::white(", "),
+			TextSegment::new("mean", Rgb([0, 180, 255])),
+			TextSegment::white(" and "),
+			TextSegment::new("minimum", Rgb([100, 200, 255])),
+			TextSegment::white(" probability of precipitation"),
+		],
+		header_font,
+		LABEL_SIZE,
+		result.daily.precipitation_probability_max.len() as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.daily.precipitation_probability_max.len() + 1,
+		probability_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(10, 20),
+		horizontal_intervals: MarkIntervals::new(1, 1),
+		vertical_label_range: probability_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font,
+		font_scale: AXIS_LABEL_SIZE,
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([0, 90, 255]),
+		data: result
+			.daily
+			.precipitation_probability_max
+			.iter()
+			.map(|n| *n as i32 * 100),
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([0, 180, 255]),
+		data: result
+			.daily
+			.precipitation_probability_mean
+			.iter()
+			.map(|n| *n as i32 * 100),
+	});
+	chart.draw(SolidBars {
+		colour: Rgb([100, 200, 255]),
+		data: result
+			.daily
+			.precipitation_probability_min
+			.iter()
+			.map(|n| *n as i32 * 100),
+	});
+
 	chart.into_canvas()
 }
 
