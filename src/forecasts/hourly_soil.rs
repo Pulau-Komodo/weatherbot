@@ -15,7 +15,7 @@ use crate::{
 	error::Error,
 	forecasts::hourly::hour_from_timestamp,
 	location::{Coordinates, Location},
-	util::convert_num,
+	util::{CommandInteractionExt as _, convert_num},
 };
 
 #[derive(Debug, Deserialize)]
@@ -73,7 +73,12 @@ pub async fn handle_hourly_soil(
 	let client = Client::new();
 	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
 
-	let result = HourlySoilMoistureResult::get(location.coordinates(), &client).await?;
+	let result = interaction
+		.defer_and(
+			HourlySoilMoistureResult::get(location.coordinates(), &client),
+			context,
+		)
+		.await?;
 	let times = result
 		.hourly
 		.time
@@ -167,12 +172,10 @@ pub async fn handle_hourly_soil(
 	let image = make_png(soil_moisture_image);
 
 	interaction
-		.create_response(
+		.create_followup(
 			context,
-			CreateInteractionResponse::Message(
-				CreateInteractionResponseMessage::new()
-					.add_file(CreateAttachment::bytes(image, "hourly_soil.png")),
-			),
+			CreateInteractionResponseFollowup::new()
+				.add_file(CreateAttachment::bytes(image, "hourly_soil.png")),
 		)
 		.await?;
 	Ok(())

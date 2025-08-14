@@ -1,3 +1,9 @@
+use extend::ext;
+use serenity::{
+	all::{CommandInteraction, Context},
+	futures::future::join,
+};
+
 /// Convert a `f32` into a `i32` and multiply it by 100, because the graph drawing library uses them this way often.
 pub fn convert_num(n: f32) -> i32 {
 	(n * 100.0).round() as i32
@@ -39,4 +45,14 @@ pub fn weather_code_to_str(weather_code: u8) -> Option<&'static str> {
 		}
 	};
 	Some(str)
+}
+
+#[ext]
+pub impl CommandInteraction {
+	async fn defer_and<Fut, T>(&self, future: Fut, context: &Context) -> T
+	where
+		Fut: Future<Output = T>,
+	{
+		join(future, self.defer(&context)).await.0
+	}
 }

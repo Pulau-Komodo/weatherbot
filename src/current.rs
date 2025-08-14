@@ -6,14 +6,14 @@ use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption,
-	CreateInteractionResponse, CreateInteractionResponseMessage,
+	CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
 };
 use sqlx::{Pool, Sqlite};
 
 use crate::{
 	error::Error,
 	location::{Coordinates, Location},
-	util::weather_code_to_str,
+	util::{CommandInteractionExt as _, weather_code_to_str},
 };
 
 #[derive(Debug, Deserialize)]
@@ -86,7 +86,9 @@ pub async fn handle_current(
 	let client = Client::new();
 	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
 
-	let weather = CurrentResult::get(location.coordinates(), &client).await?;
+	let weather = interaction
+		.defer_and(CurrentResult::get(location.coordinates(), &client), context)
+		.await?;
 	let current = weather.current;
 
 	let interval_text = current
@@ -124,11 +126,9 @@ pub async fn handle_current(
 	);
 
 	interaction
-		.create_response(
+		.create_followup(
 			context,
-			CreateInteractionResponse::Message(
-				CreateInteractionResponseMessage::new().content(content),
-			),
+			CreateInteractionResponseFollowup::new().content(content),
 		)
 		.await?;
 	Ok(())

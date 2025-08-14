@@ -13,14 +13,14 @@ use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateAttachment, CreateCommand,
-	CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
+	CreateCommandOption, CreateInteractionResponseFollowup,
 };
 use sqlx::{Pool, Sqlite};
 
 use crate::{
 	error::Error,
 	location::{Coordinates, Location},
-	util::convert_num,
+	util::{CommandInteractionExt as _, convert_num},
 };
 
 #[derive(Debug, Deserialize)]
@@ -95,7 +95,9 @@ pub async fn handle_hourly(
 	let client = Client::new();
 	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
 
-	let result = HourlyResult::get(location.coordinates(), &client).await?;
+	let result = interaction
+		.defer_and(HourlyResult::get(location.coordinates(), &client), context)
+		.await?;
 	let times = result
 		.hourly
 		.time
@@ -130,12 +132,10 @@ pub async fn handle_hourly(
 	let image = make_png(composite);
 
 	interaction
-		.create_response(
+		.create_followup(
 			context,
-			CreateInteractionResponse::Message(
-				CreateInteractionResponseMessage::new()
-					.add_file(CreateAttachment::bytes(image, "hourly.png")),
-			),
+			CreateInteractionResponseFollowup::new()
+				.add_file(CreateAttachment::bytes(image, "hourly.png")),
 		)
 		.await?;
 	Ok(())

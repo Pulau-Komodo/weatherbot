@@ -12,14 +12,15 @@ use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateAttachment, CreateCommand,
-	CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
+	CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseFollowup,
+	CreateInteractionResponseMessage,
 };
 use sqlx::{Pool, Sqlite};
 
 use crate::{
 	error::Error,
 	location::{Coordinates, Location},
-	util::convert_num,
+	util::{CommandInteractionExt as _, convert_num},
 };
 
 use super::hourly::hour_from_timestamp;
@@ -73,7 +74,12 @@ pub async fn handle_hourly_absolute_humidity(
 	let client = Client::new();
 	let location = Location::get_from_argument_or_for_user(interaction, &client, database).await?;
 
-	let result = HourlyAbsoluteHumidityResult::get(location.coordinates(), &client).await?;
+	let result = interaction
+		.defer_and(
+			HourlyAbsoluteHumidityResult::get(location.coordinates(), &client),
+			context,
+		)
+		.await?;
 	let times = result
 		.hourly
 		.time
@@ -139,10 +145,11 @@ pub async fn handle_hourly_absolute_humidity(
 	let image = make_png(chart.into_canvas());
 
 	interaction
-		.create_response(
+		.create_followup(
 			context,
-			CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().add_file(
-				CreateAttachment::bytes(image, "hourly_absolute_humidity.png"),
+			CreateInteractionResponseFollowup::new().add_file(CreateAttachment::bytes(
+				image,
+				"hourly_absolute_humidity.png",
 			)),
 		)
 		.await?;
