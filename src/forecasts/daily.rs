@@ -20,7 +20,7 @@ use sqlx::{Pool, Sqlite};
 use crate::{
 	error::Error,
 	location::{Coordinates, Location},
-	util::{CommandInteractionExt as _, convert_num},
+	util::{CommandInteractionExt as _, ResponseExt, convert_num},
 };
 
 #[derive(Debug, Deserialize)]
@@ -78,7 +78,7 @@ impl DailyResult {
 			])
 			.send()
 			.await?
-			.json::<DailyResult>()
+			.json_or_raw::<DailyResult>()
 			.await?)
 	}
 }

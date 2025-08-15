@@ -5,7 +5,7 @@ use serenity::all::{
 	CreateInteractionResponse, CreateInteractionResponseMessage,
 };
 
-use crate::error::Error;
+use crate::{error::Error, util::ResponseExt};
 
 #[derive(Debug, Deserialize)]
 pub struct GeocodingResultMinimal {
@@ -23,7 +23,7 @@ impl GeocodingResultMinimal {
 			.query(&[("format", "json"), ("name", place_name)])
 			.send()
 			.await?
-			.json()
+			.json_or_raw()
 			.await?;
 		results
 			.results
@@ -53,7 +53,7 @@ impl GeocodingResult {
 			.query(&[("count", "1"), ("format", "json"), ("name", place_name)])
 			.send()
 			.await?
-			.json()
+			.json_or_raw()
 			.await?;
 		results
 			.results

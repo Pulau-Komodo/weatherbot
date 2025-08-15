@@ -1,8 +1,12 @@
 use extend::ext;
+use reqwest::Response;
+use serde::de::DeserializeOwned;
 use serenity::{
 	all::{CommandInteraction, Context},
 	futures::future::join,
 };
+
+use crate::error::Error;
 
 /// Convert a `f32` into a `i32` and multiply it by 100, because the graph drawing library uses them this way often.
 pub fn convert_num(n: f32) -> i32 {
@@ -54,5 +58,19 @@ pub impl CommandInteraction {
 		Fut: Future<Output = T>,
 	{
 		join(future, self.defer(&context)).await.0
+	}
+}
+
+#[ext]
+pub impl Response {
+	async fn json_or_raw<T: DeserializeOwned>(self) -> Result<T, Error> {
+		let status_code = self.status();
+		let full = self.bytes().await?;
+
+		serenity::json::from_slice(&full).map_err(|err| {
+			Error::custom_unfriendly(format!(
+				"Error: {err}, status code: {status_code}, response: {full:?}"
+			))
+		})
 	}
 }

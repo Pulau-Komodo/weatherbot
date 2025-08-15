@@ -15,7 +15,7 @@ use crate::{
 	error::Error,
 	forecasts::hourly::hour_from_timestamp,
 	location::{Coordinates, Location},
-	util::{CommandInteractionExt as _, convert_num},
+	util::{CommandInteractionExt as _, ResponseExt, convert_num},
 };
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +55,7 @@ impl HourlySoilMoistureResult {
 			])
 			.send()
 			.await?
-			.json::<HourlySoilMoistureResult>()
+			.json_or_raw::<HourlySoilMoistureResult>()
 			.await?)
 	}
 }

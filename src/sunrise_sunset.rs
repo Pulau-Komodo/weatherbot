@@ -12,6 +12,7 @@ use crate::{
 	error::Error,
 	location::{Coordinates, Location},
 	reply_shortcuts::ReplyShortcuts,
+	util::ResponseExt,
 };
 
 #[derive(Debug, Deserialize)]
@@ -47,7 +48,7 @@ impl SunResult {
 			])
 			.send()
 			.await?
-			.json::<SunResult>()
+			.json_or_raw::<SunResult>()
 			.await?)
 	}
 	fn next_sunrise_and_sunset(self) -> (i64, i64) {
