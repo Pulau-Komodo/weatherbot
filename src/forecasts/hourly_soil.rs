@@ -40,7 +40,7 @@ struct HourlySoilMoistureResult {
 
 impl HourlySoilMoistureResult {
 	async fn get(coordinates: Coordinates, client: &Client) -> Result<Self, Error> {
-		Ok(client
+		client
 			.get("https://api.open-meteo.com/v1/forecast")
 			.query(&[("hourly", "soil_moisture_0_to_1cm")])
 			.query(&[("hourly", "soil_moisture_1_to_3cm")])
@@ -56,7 +56,7 @@ impl HourlySoilMoistureResult {
 			.send()
 			.await?
 			.json_or_raw::<HourlySoilMoistureResult>()
-			.await?)
+			.await
 	}
 }
 

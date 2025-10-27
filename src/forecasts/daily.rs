@@ -38,6 +38,7 @@ struct DailyWeather {
 	wind_gusts_10m_max: Vec<f32>,
 	uv_index_max: Vec<f32>,
 	uv_index_clear_sky_max: Vec<f32>,
+	shortwave_radiation_sum: Vec<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,7 +53,7 @@ struct DailyResult {
 
 impl DailyResult {
 	async fn get(coordinates: Coordinates, client: &Client) -> Result<Self, Error> {
-		Ok(client
+		client
 			.get("https://api.open-meteo.com/v1/forecast")
 			.query(&[
 				("daily", "temperature_2m_min"),
@@ -67,6 +68,7 @@ impl DailyResult {
 				("daily", "wind_gusts_10m_max"),
 				("daily", "uv_index_max"),
 				("daily", "uv_index_clear_sky_max"),
+				("daily", "shortwave_radiation_sum"),
 				("wind_speed_unit", "ms"),
 				("timeformat", "unixtime"),
 				("timezone", "auto"),
@@ -79,7 +81,7 @@ impl DailyResult {
 			.send()
 			.await?
 			.json_or_raw::<DailyResult>()
-			.await?)
+			.await
 	}
 }
 
@@ -126,6 +128,8 @@ pub async fn handle_daily(
 		precipitation_graph(&result, &times, padding, font.clone(), header_font.clone());
 	let wind_image = wind_graph(&result, &times, padding, font.clone(), header_font.clone());
 	let uvi_image = uv_graph(&result, &times, padding, font.clone(), header_font.clone());
+	let radiation_image =
+		shortwave_radiation_graph(&result, &times, padding, font.clone(), header_font.clone());
 	let pop_image = pop_graph(&result, &times, padding, font.clone(), header_font.clone());
 
 	let composite = composite(&[
@@ -134,6 +138,7 @@ pub async fn handle_daily(
 		precipitation_image,
 		wind_image,
 		uvi_image,
+		radiation_image,
 	]);
 	let image = make_png(composite);
 
@@ -145,6 +150,70 @@ pub async fn handle_daily(
 		)
 		.await?;
 	Ok(())
+}
+
+fn shortwave_radiation_graph(
+	result: &DailyResult,
+	times: &[u8],
+	padding: Padding,
+	font: FontRef<'static>,
+	header_font: FontRef<'static>,
+) -> RgbImage {
+	let label_interval = 4;
+
+	let max_radiation = result
+		.daily
+		.shortwave_radiation_sum
+		.iter()
+		.fold(0.0f32, |acc, num| acc.max(*num));
+	let range = Range::new(
+		0,
+		next_multiple(convert_num(max_radiation), label_interval as i32),
+	);
+
+	let spacing = Spacing {
+		horizontal: 25,
+		vertical: 3,
+	};
+	let colour = Rgb([255, 255, 224]);
+
+	let label = TextBox::new(
+		&[TextSegment::new("Shortwave radiation (MJ/m²)", colour)],
+		header_font,
+		LABEL_SIZE,
+		(result.daily.shortwave_radiation_sum.len() as u32 - 1) * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		result.daily.shortwave_radiation_sum.len() + 1,
+		range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(2, label_interval),
+		horizontal_intervals: MarkIntervals::new(1, 1),
+		vertical_label_range: range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: true,
+		font,
+		font_scale: ab_glyph::PxScale { x: 14.0, y: 14.0 },
+	});
+	chart.draw(SolidBars {
+		colour,
+		data: result
+			.daily
+			.shortwave_radiation_sum
+			.iter()
+			.copied()
+			.map(convert_num),
+	});
+
+	chart.into_canvas()
 }
 
 fn uv_graph(

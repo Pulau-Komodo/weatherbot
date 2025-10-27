@@ -12,8 +12,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateAttachment, CreateCommand,
-	CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseFollowup,
-	CreateInteractionResponseMessage,
+	CreateCommandOption, CreateInteractionResponseFollowup,
 };
 use sqlx::{Pool, Sqlite};
 
@@ -44,7 +43,7 @@ struct HourlyAbsoluteHumidityResult {
 
 impl HourlyAbsoluteHumidityResult {
 	async fn get(coordinates: Coordinates, client: &Client) -> Result<Self, Error> {
-		Ok(client
+		client
 			.get("https://api.open-meteo.com/v1/forecast")
 			.query(&[("hourly", "temperature_2m")])
 			.query(&[("hourly", "relative_humidity_2m")])
@@ -57,7 +56,7 @@ impl HourlyAbsoluteHumidityResult {
 			.send()
 			.await?
 			.json_or_raw::<HourlyAbsoluteHumidityResult>()
-			.await?)
+			.await
 	}
 }
 

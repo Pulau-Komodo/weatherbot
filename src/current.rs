@@ -6,7 +6,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::{
 	CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption,
-	CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
+	CreateInteractionResponseFollowup,
 };
 use sqlx::{Pool, Sqlite};
 

@@ -33,7 +33,7 @@ struct SunResult {
 
 impl SunResult {
 	async fn get(coordinates: Coordinates, client: &Client) -> Result<Self, Error> {
-		Ok(client
+		client
 			.get("https://api.open-meteo.com/v1/forecast")
 			.query(&[
 				("daily", "sunrise"),
@@ -49,7 +49,7 @@ impl SunResult {
 			.send()
 			.await?
 			.json_or_raw::<SunResult>()
-			.await?)
+			.await
 	}
 	fn next_sunrise_and_sunset(self) -> (i64, i64) {
 		let now = Utc::now().timestamp();
