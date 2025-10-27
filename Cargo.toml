@@ -23,7 +23,7 @@ serenity = { version = "0.12.2", default-features = false, features = [
 	"chrono",
 ] }
 tokio = { version = "1.38.1", features = ["macros", "rt-multi-thread"] }
-reqwest = { version = "0.11.18", features = ["json"] }
+reqwest = { version = "0.11.18", features = ["json", "gzip"] }
 serde = "1.0.175"
 graph = { git = "https://github.com/Pulau-Komodo/graph.git", rev = "0bea23a3b96b01795fbcdd819d47c6ba5f73cfcd" }
 #graph = { path = "../graph" }
