@@ -78,23 +78,22 @@ impl Coordinates {
 	///
 	/// Degrees, minutes, seconds: `52° 52′ 34″ N, 118° 4′ 46″ W` (does not support decimals, spaces and comma optional, `′` and `″` can be `'` and `"` instead)
 	pub fn parse(input: &str) -> Option<Self> {
-		if let Some(captures) = SIMPLE_COORDS_REGEX.captures(input) {
-			if let Some((Ok(latitude), Ok(longitude))) = captures
+		if let Some(captures) = SIMPLE_COORDS_REGEX.captures(input)
+			&& let Some((Ok(latitude), Ok(longitude))) = captures
 				.iter()
 				.skip(1)
 				.flatten()
 				.map(|capture| capture.as_str().parse::<f32>())
 				.collect_tuple()
-			{
-				return Some(Self {
-					latitude,
-					longitude,
-				});
-			}
+		{
+			return Some(Self {
+				latitude,
+				longitude,
+			});
 		}
 
-		if let Some(captures) = FANCIER_COORDS_REGEX.captures(input) {
-			if let Some((
+		if let Some(captures) = FANCIER_COORDS_REGEX.captures(input)
+			&& let Some((
 				degrees_a,
 				minutes_a,
 				seconds_a,
@@ -109,25 +108,24 @@ impl Coordinates {
 				.flatten()
 				.map(|capture| capture.as_str())
 				.collect_tuple()
-			{
-				let direction_a = Direction::get(direction_a.chars().next().unwrap());
-				let direction_b = Direction::get(direction_b.chars().next().unwrap());
-				let (hours_a, minutes_a, seconds_a, hours_b, minutes_b, seconds_b) = [
-					degrees_a, minutes_a, seconds_a, degrees_b, minutes_b, seconds_b,
-				]
-				.into_iter()
-				.filter_map(|str| str.parse::<f32>().ok())
-				.collect_tuple()?;
-				if direction_a.geoaxis == direction_b.geoaxis {
-					return None; // Invalid combination of directions
-				}
-				let magnitude_a = hours_a + minutes_a / 60.0 + seconds_a / 60.0 / 60.0;
-				let magnitude_b = hours_b + minutes_b / 60.0 + seconds_b / 60.0 / 60.0;
-				let mut coordinates = Self::new(0.0, 0.0);
-				*coordinates.get_axis_mut(direction_a.geoaxis) = magnitude_a * direction_a.sign;
-				*coordinates.get_axis_mut(direction_b.geoaxis) = magnitude_b * direction_b.sign;
-				return Some(coordinates);
+		{
+			let direction_a = Direction::get(direction_a.chars().next().unwrap());
+			let direction_b = Direction::get(direction_b.chars().next().unwrap());
+			let (hours_a, minutes_a, seconds_a, hours_b, minutes_b, seconds_b) = [
+				degrees_a, minutes_a, seconds_a, degrees_b, minutes_b, seconds_b,
+			]
+			.into_iter()
+			.filter_map(|str| str.parse::<f32>().ok())
+			.collect_tuple()?;
+			if direction_a.geoaxis == direction_b.geoaxis {
+				return None; // Invalid combination of directions
 			}
+			let magnitude_a = hours_a + minutes_a / 60.0 + seconds_a / 60.0 / 60.0;
+			let magnitude_b = hours_b + minutes_b / 60.0 + seconds_b / 60.0 / 60.0;
+			let mut coordinates = Self::new(0.0, 0.0);
+			*coordinates.get_axis_mut(direction_a.geoaxis) = magnitude_a * direction_a.sign;
+			*coordinates.get_axis_mut(direction_b.geoaxis) = magnitude_b * direction_b.sign;
+			return Some(coordinates);
 		}
 		None
 	}
