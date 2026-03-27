@@ -36,10 +36,10 @@ pub async fn handle_set_location(
 			&context.http,
 			format!(
 				"Location set to {} ({}), country: {}, feature code: {}",
-				location.name(),
+				location.name().unwrap_or("unspecified"),
 				location.coordinates(),
-				location.country(),
-				location.feature_code()
+				location.country().unwrap_or("unspecified"),
+				location.feature_code().unwrap_or("unspecified"),
 			),
 		)
 		.await?;

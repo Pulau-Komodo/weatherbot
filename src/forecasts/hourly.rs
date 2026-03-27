@@ -131,10 +131,22 @@ pub async fn handle_hourly(
 	]);
 	let image = make_png(composite);
 
+	let text = if let Some(name) = location.name() {
+		format!(
+			"Hourly forecast for {}, {} ({})",
+			name,
+			location.country().unwrap_or("unspecified"),
+			location.coordinates()
+		)
+	} else {
+		String::from("Hourly forecast for specified coordinates")
+	};
+
 	interaction
 		.create_followup(
 			context,
 			CreateInteractionResponseFollowup::new()
+				.content(text)
 				.add_file(CreateAttachment::bytes(image, "hourly.png")),
 		)
 		.await?;

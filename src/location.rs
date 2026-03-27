@@ -255,17 +255,17 @@ impl Location {
 		};
 		Ok(location)
 	}
-	pub fn name(&self) -> &str {
-		self.name.as_deref().unwrap_or("unspecified")
+	pub fn name(&self) -> Option<&str> {
+		self.name.as_deref()
 	}
 	pub fn coordinates(&self) -> Coordinates {
 		self.coordinates
 	}
-	pub fn country(&self) -> &str {
-		self.country.as_deref().unwrap_or("unspecified")
+	pub fn country(&self) -> Option<&str> {
+		self.country.as_deref()
 	}
-	pub fn feature_code(&self) -> &str {
-		self.feature_code.as_deref().unwrap_or("unspecified")
+	pub fn feature_code(&self) -> Option<&str> {
+		self.feature_code.as_deref()
 	}
 }
 
