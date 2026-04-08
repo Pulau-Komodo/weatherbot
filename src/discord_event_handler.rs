@@ -6,7 +6,7 @@ use serenity::{
 use sqlx::{Pool, Sqlite};
 
 use crate::{
-	current,
+	current, distance,
 	error::Error,
 	forecasts::{daily, hourly, hourly_absolute_humidity, hourly_soil},
 	geocoding,
@@ -42,6 +42,7 @@ impl EventHandler for DiscordEventHandler {
 				"find_coordinates" => {
 					geocoding::handle_find_coordinates(&context, &interaction).await
 				}
+				"distance" => distance::handle_distance(&context, &interaction).await,
 				"current" => {
 					current::handle_current(&context, &interaction, &self.database, &self.font)
 						.await
@@ -115,6 +116,7 @@ impl EventHandler for DiscordEventHandler {
 		if Some("register") == arg.as_deref() {
 			let commands = Vec::from([
 				geocoding::create_find_coordinates(),
+				distance::create_distance(),
 				current::create_current(),
 				hourly::create_hourly(),
 				hourly_soil::create_hourly_soil(),

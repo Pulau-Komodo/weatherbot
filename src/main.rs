@@ -9,6 +9,7 @@ mod accuweather;
 mod current;
 mod database;
 mod discord_event_handler;
+mod distance;
 mod error;
 mod forecasts;
 mod geocoding;

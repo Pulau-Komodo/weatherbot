@@ -55,6 +55,7 @@ static FANCIER_COORDS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 	Regex::new(r#"(?i)^(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])\s*,?\s*(\d{1,3})°\s*(\d{1,2})[\u2032']\s*(\d{1,2})[″"]\s*([NESW])$"#).unwrap()
 });
 
+/// Latitude and longitude are in degrees.
 #[derive(Debug, Clone, Copy)]
 pub struct Coordinates {
 	/// How far above the equator
@@ -64,6 +65,7 @@ pub struct Coordinates {
 }
 
 impl Coordinates {
+	/// Latitude and longitude are in degrees.
 	pub fn new(latitude: f32, longitude: f32) -> Self {
 		Self {
 			latitude,
@@ -135,6 +137,27 @@ impl Coordinates {
 			GeoAxis::Longitude => &mut self.longitude,
 		}
 	}
+	/// The distance of the shortest path over the surface of Earth, simplified to a sphere, from one point on it to another.
+	///
+	/// This uses the Haversine formula.
+	pub fn distance_to(&self, other: Self) -> Distance {
+		const EARTH_RADIUS: f32 = 6371e3; // Earth's radius in meters
+		let [a_lat, a_lon, b_lat, b_lon] = [
+			self.latitude,
+			self.longitude,
+			other.latitude,
+			other.longitude,
+		]
+		.map(f32::to_radians);
+		let delta_lat = a_lat - b_lat;
+		let delta_lon = a_lon - b_lon;
+
+		let a = (delta_lat / 2.0).sin().powi(2)
+			+ a_lat.cos() * b_lat.cos() * (delta_lon / 2.0).sin().powi(2);
+		let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+
+		Distance::meters(c * EARTH_RADIUS)
+	}
 }
 
 impl Display for Coordinates {
@@ -143,7 +166,48 @@ impl Display for Coordinates {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+/// A distance that implements `Display` to show in Mm, km, m or mm, with 3 significant digits.
+pub struct Distance {
+	meters: f32,
+}
+
+impl Distance {
+	pub fn meters(meters: f32) -> Self {
+		Self { meters }
+	}
+	pub fn is_zero(&self) -> bool {
+		self.meters == 0.0
+	}
+}
+
+impl Display for Distance {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let abs = self.meters.abs();
+		let (value, unit) = if abs >= 1_000_000.0 {
+			(abs / 1_000_000.0, "Mm")
+		} else if abs >= 1_000.0 {
+			(abs / 1_000.0, "km")
+		} else if abs >= 1.0 {
+			(abs, "m")
+		} else {
+			(abs * 1_000.0, "mm")
+		};
+
+		let digits = if abs == 0.0 {
+			0
+		} else {
+			3 - value.log10().floor() as i32 - 1
+		}
+		.max(0);
+
+		f.write_fmt(format_args!("{:.*}{}", digits as usize, value, unit))
+	}
+}
+
 /// A location, consisting of coordinates and optional information about it.
+///
+/// The `Display` implementation formats it like "Paris, France (48.85341, 2.3488)" or, if name is not available, like "48.85341, 2.3488".
 pub struct Location {
 	name: Option<String>,
 	coordinates: Coordinates,
@@ -264,6 +328,21 @@ impl Location {
 	}
 	pub fn feature_code(&self) -> Option<&str> {
 		self.feature_code.as_deref()
+	}
+}
+
+impl Display for Location {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if let Some(name) = &self.name {
+			f.write_fmt(format_args!(
+				"{}, {} ({})",
+				name,
+				self.country().unwrap_or("unspecified"),
+				self.coordinates()
+			))
+		} else {
+			f.write_fmt(format_args!("{}", self.coordinates))
+		}
 	}
 }
 
