@@ -4,8 +4,9 @@ use graph::{
 	drawing::{MarkIntervals, Padding, Spacing},
 	generic_graph::{AxisGridLabels, Chart, Line, Rgb},
 	text_box::{TextBox, TextSegment},
-	util::make_png,
+	util::{composite, make_png, previous_and_next_multiple},
 };
+use itertools::Itertools;
 use reqwest::Client;
 use serde::Deserialize;
 use serenity::all::*;
@@ -19,8 +20,12 @@ use crate::{
 };
 
 #[derive(Debug, Deserialize)]
-struct HourlySoilMoisture {
+struct HourlySoil {
 	time: Vec<i64>,
+	soil_temperature_0cm: Vec<f32>,
+	soil_temperature_6cm: Vec<f32>,
+	soil_temperature_18cm: Vec<f32>,
+	soil_temperature_54cm: Vec<f32>,
 	soil_moisture_0_to_1cm: Vec<f32>,
 	soil_moisture_1_to_3cm: Vec<f32>,
 	soil_moisture_3_to_9cm: Vec<f32>,
@@ -29,19 +34,23 @@ struct HourlySoilMoisture {
 }
 
 #[derive(Debug, Deserialize)]
-struct HourlySoilMoistureResult {
+struct HourlySoilResult {
 	#[serde(rename = "latitude")]
 	_latitude: f32,
 	#[serde(rename = "longitude")]
 	_longitude: f32,
 	utc_offset_seconds: i32,
-	hourly: HourlySoilMoisture,
+	hourly: HourlySoil,
 }
 
-impl HourlySoilMoistureResult {
+impl HourlySoilResult {
 	async fn get(coordinates: Coordinates, client: &Client) -> Result<Self, Error> {
 		client
 			.get("https://api.open-meteo.com/v1/forecast")
+			.query(&[("hourly", "soil_temperature_0cm")])
+			.query(&[("hourly", "soil_temperature_6cm")])
+			.query(&[("hourly", "soil_temperature_18cm")])
+			.query(&[("hourly", "soil_temperature_54cm")])
 			.query(&[("hourly", "soil_moisture_0_to_1cm")])
 			.query(&[("hourly", "soil_moisture_1_to_3cm")])
 			.query(&[("hourly", "soil_moisture_3_to_9cm")])
@@ -55,7 +64,7 @@ impl HourlySoilMoistureResult {
 			])
 			.send()
 			.await?
-			.json_or_raw::<HourlySoilMoistureResult>()
+			.json_or_raw::<HourlySoilResult>()
 			.await
 	}
 }
@@ -75,7 +84,7 @@ pub async fn handle_hourly_soil(
 
 	let result = interaction
 		.defer_and(
-			HourlySoilMoistureResult::get(location.coordinates(), &client),
+			HourlySoilResult::get(location.coordinates(), &client),
 			context,
 		)
 		.await?;
@@ -92,7 +101,6 @@ pub async fn handle_hourly_soil(
 		left: 21,
 		right: 3,
 	};
-
 	let spacing = Spacing {
 		horizontal: 8,
 		vertical: 3,
@@ -105,6 +113,75 @@ pub async fn handle_hourly_soil(
 		Rgb([200, 50, 50]),
 		Rgb([150, 0, 0]),
 	];
+
+	let soil_temperatures = [
+		result.hourly.soil_temperature_0cm,
+		result.hourly.soil_temperature_6cm,
+		result.hourly.soil_temperature_18cm,
+		result.hourly.soil_temperature_54cm,
+	];
+	let data_len = soil_temperatures.iter().map(|v| v.len()).max().unwrap();
+
+	let label_interval = 4;
+
+	let temp_range = soil_temperatures
+		.iter()
+		.flatten()
+		.copied()
+		.minmax()
+		.into_option()
+		.unwrap_or((0.0, 0.0));
+	let chart_temp_range = previous_and_next_multiple(
+		Range::new(convert_num(temp_range.0), convert_num(temp_range.1)),
+		label_interval as i32,
+	);
+
+	let label = TextBox::new(
+		&[
+			TextSegment::white("Soil temperature at "),
+			TextSegment::new("0", COLOURS[0]),
+			TextSegment::white(", "),
+			TextSegment::new("6", COLOURS[1]),
+			TextSegment::white(", "),
+			TextSegment::new("18", COLOURS[2]),
+			TextSegment::white(" and "),
+			TextSegment::new("54", COLOURS[3]),
+			TextSegment::white(" cm (°C)"),
+		],
+		header_font.clone(),
+		LABEL_SIZE,
+		(data_len - 1) as u32 * spacing.horizontal,
+		2,
+	);
+	let mut chart = Chart::new(
+		data_len,
+		chart_temp_range.len() as u32,
+		spacing,
+		Padding {
+			above: padding.above + label.height(),
+			..padding
+		},
+	);
+	chart.draw(label);
+	chart.draw(AxisGridLabels {
+		vertical_intervals: MarkIntervals::new(2, label_interval),
+		horizontal_intervals: MarkIntervals::new(1, 2),
+		vertical_label_range: chart_temp_range,
+		horizontal_labels: times.iter().copied(),
+		horizontal_labels_centered: false,
+		font: font.clone(),
+		font_scale: AXIS_LABEL_SIZE,
+	});
+
+	for (index, soil_temperature) in soil_temperatures.into_iter().enumerate().rev() {
+		chart.draw(Line {
+			colour: COLOURS[index],
+			data: soil_temperature.into_iter().map(convert_num),
+			max: chart_temp_range.end(),
+		});
+	}
+
+	let soil_temperature_image = chart.into_canvas();
 
 	let soil_moistures = [
 		result.hourly.soil_moisture_0_to_1cm,
@@ -169,7 +246,9 @@ pub async fn handle_hourly_soil(
 
 	let soil_moisture_image = chart.into_canvas();
 
-	let image = make_png(soil_moisture_image);
+	let image = composite(&[soil_temperature_image, soil_moisture_image]);
+
+	let image = make_png(image);
 
 	interaction
 		.create_followup(
@@ -182,8 +261,8 @@ pub async fn handle_hourly_soil(
 }
 
 pub fn create_hourly_soil() -> CreateCommand {
-	CreateCommand::new("soil_moisture")
-		.description("Hourly soil moisture forecast")
+	CreateCommand::new("soil")
+		.description("Hourly soil temperature and moisture forecasts")
 		.add_option(
 			CreateCommandOption::new(
 				CommandOptionType::String,

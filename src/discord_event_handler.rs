@@ -57,7 +57,7 @@ impl EventHandler for DiscordEventHandler {
 					)
 					.await
 				}
-				"soil_moisture" => {
+				"soil" => {
 					hourly_soil::handle_hourly_soil(
 						&context,
 						&interaction,
