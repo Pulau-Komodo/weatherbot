@@ -32,8 +32,9 @@ pub async fn handle_distance(
 	if distance.is_zero() {
 		return Err(Error::friendly("Those places are the same."));
 	}
+	let heading = place_a.coordinates().heading_towards(place_b.coordinates());
 
-	let content = format!("The distance between {place_a} and {place_b} is {distance}.");
+	let content = format!("{place_b} is {distance} {heading} of {place_a}.");
 	interaction
 		.create_response(
 			context,
@@ -47,13 +48,13 @@ pub async fn handle_distance(
 
 pub fn create_distance() -> CreateCommand {
 	CreateCommand::new("distance")
-		.description("Get the distance between two places.")
+		.description("Get the distance and heading between two places.")
 		.add_option(
-			CreateCommandOption::new(CommandOptionType::String, "a", "The first place")
+			CreateCommandOption::new(CommandOptionType::String, "from", "The first place")
 				.required(true),
 		)
 		.add_option(
-			CreateCommandOption::new(CommandOptionType::String, "b", "The second place")
+			CreateCommandOption::new(CommandOptionType::String, "to", "The second place")
 				.required(true),
 		)
 }

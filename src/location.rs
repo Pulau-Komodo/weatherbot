@@ -158,6 +158,23 @@ impl Coordinates {
 
 		Distance::meters(c * EARTH_RADIUS)
 	}
+	/// The heading from location A for the shortest path to location B.
+	pub fn heading_towards(&self, other: Self) -> Heading {
+		let [a_lat, a_lon, b_lat, b_lon] = [
+			self.latitude,
+			self.longitude,
+			other.latitude,
+			other.longitude,
+		]
+		.map(f32::to_radians);
+		let delta_lon = b_lon - a_lon;
+
+		let y = delta_lon.sin() * b_lat.cos();
+		let x = a_lat.cos() * b_lat.sin() - a_lat.sin() * b_lat.cos() * delta_lon.cos();
+
+		let heading = y.atan2(x);
+		Heading::degrees(heading.to_degrees())
+	}
 }
 
 impl Display for Coordinates {
@@ -166,7 +183,7 @@ impl Display for Coordinates {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 /// A distance that implements `Display` to show in Mm, km, m or mm, with 3 significant digits.
 pub struct Distance {
 	meters: f32,
@@ -202,6 +219,46 @@ impl Display for Distance {
 		.max(0);
 
 		f.write_fmt(format_args!("{:.*}{}", digits as usize, value, unit))
+	}
+}
+
+/// A heading. 0° is north and 90° is east.
+///
+/// Implements `Display` to show as "NNE (31°)".
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Heading {
+	degrees: f32,
+}
+
+impl Heading {
+	pub fn degrees(degrees: f32) -> Self {
+		let degrees = degrees.rem_euclid(360.0);
+		Self { degrees }
+	}
+}
+
+impl Display for Heading {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let cardinal = match self.degrees {
+			..11.25 => "north",
+			..33.75 => "north-northeast",
+			..56.25 => "northeast",
+			..78.75 => "east-northeast",
+			..101.25 => "east",
+			..123.75 => "east-southeast",
+			..146.25 => "southeast",
+			..168.75 => "south-southeast",
+			..191.25 => "south",
+			..213.75 => "south-southwest",
+			..236.25 => "southwest",
+			..258.75 => "west-southwest",
+			..281.25 => "west",
+			..303.75 => "west-northwest",
+			..326.25 => "northwest",
+			..348.75 => "north-northwest",
+			_ => "north",
+		};
+		f.write_fmt(format_args!("{cardinal} ({:.1}°)", self.degrees))
 	}
 }
 
@@ -389,5 +446,19 @@ mod tests {
 
 		assert!(is_close_enough(coords_a.latitude, coords_b.latitude, 5));
 		assert!(is_close_enough(coords_a.longitude, coords_b.longitude, 5));
+	}
+	#[test]
+	fn heading() {
+		let berlin = Coordinates::new(52.52437, 13.41053);
+		let barcelona = Coordinates::new(41.38879, 2.15899);
+		println!("{}", berlin.heading_towards(barcelona));
+		println!("{}", barcelona.heading_towards(berlin));
+		let south_of_berlin = Coordinates::new(51.52437, 13.41053);
+		println!("{}", berlin.heading_towards(south_of_berlin));
+		println!("{}", south_of_berlin.heading_towards(berlin));
+		let new_york = Coordinates::new(40.71427, -74.00597);
+		let calgary = Coordinates::new(51.05011, -114.08529);
+		println!("{}", new_york.heading_towards(calgary));
+		println!("{}", calgary.heading_towards(new_york));
 	}
 }
